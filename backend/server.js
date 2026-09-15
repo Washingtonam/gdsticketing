@@ -1,0 +1,612 @@
+const express = require('express');
+const cors = require('cors');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const dotenv = require('dotenv');
+const { connectDB } = require('./config/db');
+const User = require('./models/User');
+const Lead = require('./models/Lead');
+const Course = require('./models/Course');
+const Enrollment = require('./models/Enrollment');
+
+dotenv.config();
+
+const app = express();
+const port = process.env.PORT || 5000;
+let databaseReady = false;
+
+app.use(
+  cors({
+    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    credentials: true,
+  })
+);
+app.use(express.json());
+
+const leads = [];
+const users = [
+  {
+    id: 'admin-1',
+    fullName: 'GDS Admin',
+    email: 'admin@gdsticketing.com',
+    phone: '+2348000000000',
+    institution: 'GDS Academy',
+    role: 'admin',
+    passwordHash: bcrypt.hashSync('Admin123!', 10),
+    enrolledCourses: ['sabre-core'],
+    paymentStatus: true,
+    createdAt: new Date().toISOString(),
+  },
+];
+
+const defaultCourses = [
+  {
+    id: 'sabre-core',
+    slug: 'sabre-core',
+    title: 'Sabre Core Ticketing',
+    duration: '4 weeks',
+    price: 45000,
+    currency: 'NGN',
+    level: 'Beginner',
+    description: 'Learn the fundamentals of GDS ticketing, PNR creation, and fare handling.',
+    lessons: [
+      { id: 'lesson-1', title: 'Intro to GDS and Sabre workflow', type: 'video' },
+      { id: 'lesson-2', title: 'PNR creation and passenger data', type: 'guide' },
+      { id: 'lesson-3', title: 'Ticketing essentials and issuance', type: 'quiz' },
+    ],
+  },
+  {
+    id: 'agency-ready',
+    slug: 'agency-ready',
+    title: 'Agency Ready Bootcamp',
+    duration: '6 weeks',
+    price: 75000,
+    currency: 'NGN',
+    level: 'Advanced',
+    description: 'A practical career pathway for students who want real booking and support workflows.',
+    lessons: [
+      { id: 'lesson-4', title: 'Advanced itinerary building', type: 'video' },
+      { id: 'lesson-5', title: 'Fare rules and amendments', type: 'guide' },
+      { id: 'lesson-6', title: 'Real-world agency simulation', type: 'quiz' },
+    ],
+  },
+];
+
+const courses = defaultCourses;
+
+const issueToken = (user) =>
+  jwt.sign(
+    { id: user.id, email: user.email, role: user.role },
+    process.env.JWT_SECRET || 'dev-secret-key',
+    { expiresIn: '7d' }
+  );
+
+const sanitizeUser = (user) => {
+  const plainUser = user && user.toObject ? user.toObject() : user;
+
+  return {
+    id: plainUser.id || plainUser._id?.toString(),
+    fullName: plainUser.fullName,
+    email: plainUser.email,
+    phone: plainUser.phone,
+    institution: plainUser.institution,
+    role: plainUser.role,
+    enrolledCourses: plainUser.enrolledCourses || [],
+    paymentStatus: plainUser.paymentStatus || false,
+  };
+};
+
+const findUserByEmail = (email) =>
+  users.find((user) => user.email.toLowerCase() === String(email || '').toLowerCase());
+
+const findUserById = (id) => users.find((user) => user.id === id);
+
+const buildUserPayload = async (userDocument) => {
+  if (!userDocument) return null;
+
+  if (databaseReady && userDocument.toObject) {
+    return sanitizeUser(userDocument);
+  }
+
+  return sanitizeUser(userDocument);
+};
+
+const requireAuth = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ message: 'Authentication required.' });
+  }
+
+  const token = authHeader.split(' ')[1];
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret-key');
+    req.user = decoded;
+    next();
+  } catch (error) {
+    return res.status(401).json({ message: 'Invalid or expired token.' });
+  }
+};
+
+const requireAdmin = (req, res, next) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ message: 'Admin access required.' });
+  }
+
+  next();
+};
+
+app.get('/health', (req, res) => {
+  res.json({ ok: true, message: 'GDS Ticketing API is running.' });
+});
+
+app.post('/api/v1/auth/register', async (req, res) => {
+  const { fullName, email, password, phone, institution } = req.body;
+
+  if (!fullName || !email || !password) {
+    return res.status(400).json({ message: 'fullName, email, and password are required.' });
+  }
+
+  if (databaseReady) {
+    const existingUser = await User.findOne({ email: String(email).toLowerCase() });
+
+    if (existingUser) {
+      return res.status(409).json({ message: 'A user with this email already exists.' });
+    }
+
+    const user = await User.create({
+      fullName,
+      email: String(email).toLowerCase(),
+      phone: phone || '',
+      institution: institution || '',
+      role: 'student',
+      passwordHash: await bcrypt.hash(password, 10),
+      enrolledCourses: [],
+      paymentStatus: false,
+    });
+
+    const token = issueToken({ id: user._id.toString(), email: user.email, role: user.role });
+
+    return res.status(201).json({
+      token,
+      user: sanitizeUser(user),
+    });
+  }
+
+  if (findUserByEmail(email)) {
+    return res.status(409).json({ message: 'A user with this email already exists.' });
+  }
+
+  const user = {
+    id: `user-${Date.now()}`,
+    fullName,
+    email,
+    phone: phone || '',
+    institution: institution || '',
+    role: 'student',
+    passwordHash: await bcrypt.hash(password, 10),
+    enrolledCourses: [],
+    paymentStatus: false,
+    createdAt: new Date().toISOString(),
+  };
+
+  users.push(user);
+
+  const token = issueToken(user);
+
+  return res.status(201).json({
+    token,
+    user: sanitizeUser(user),
+  });
+});
+
+app.post('/api/v1/auth/login', async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ message: 'Email and password are required.' });
+  }
+
+  if (databaseReady) {
+    const user = await User.findOne({ email: String(email).toLowerCase() });
+
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid credentials.' });
+    }
+
+    const passwordMatches = await bcrypt.compare(password, user.passwordHash);
+
+    if (!passwordMatches) {
+      return res.status(401).json({ message: 'Invalid credentials.' });
+    }
+
+    const token = issueToken({ id: user._id.toString(), email: user.email, role: user.role });
+
+    return res.json({
+      token,
+      user: sanitizeUser(user),
+    });
+  }
+
+  const user = findUserByEmail(email);
+
+  if (!user) {
+    return res.status(401).json({ message: 'Invalid credentials.' });
+  }
+
+  const passwordMatches = await bcrypt.compare(password, user.passwordHash);
+
+  if (!passwordMatches) {
+    return res.status(401).json({ message: 'Invalid credentials.' });
+  }
+
+  const token = issueToken(user);
+
+  return res.json({
+    token,
+    user: sanitizeUser(user),
+  });
+});
+
+app.get('/api/v1/auth/me', requireAuth, async (req, res) => {
+  if (databaseReady) {
+    const user = await User.findById(req.user.id);
+
+    if (!user) {
+      return res.status(404).json({ message: 'User could not be found.' });
+    }
+
+    return res.json({ user: sanitizeUser(user) });
+  }
+
+  const user = findUserById(req.user.id);
+
+  if (!user) {
+    return res.status(404).json({ message: 'User could not be found.' });
+  }
+
+  return res.json({ user: sanitizeUser(user) });
+});
+
+app.put('/api/v1/auth/profile', requireAuth, async (req, res) => {
+  const user = users.find((item) => item.id === req.user.id);
+
+  if (!user) {
+    return res.status(404).json({ message: 'User could not be found.' });
+  }
+
+  const { fullName, phone, institution, password } = req.body;
+
+  if (fullName) user.fullName = fullName;
+  if (phone) user.phone = phone;
+  if (institution) user.institution = institution;
+
+  if (password) {
+    user.passwordHash = await bcrypt.hash(password, 10);
+  }
+
+  return res.json({ user: sanitizeUser(user) });
+});
+
+app.post('/api/v1/leads/capture', async (req, res) => {
+  const { fullName, email, phone, schoolDept, institution, source } = req.body;
+
+  if (!fullName || !email || !phone) {
+    return res.status(400).json({ message: 'fullName, email, and phone are required.' });
+  }
+
+  if (databaseReady) {
+    const lead = await Lead.create({
+      fullName,
+      email: String(email).toLowerCase(),
+      phone,
+      schoolDept: schoolDept || institution || '',
+      source: source || 'Landing_Page',
+      emailSentCount: 0,
+    });
+
+    return res.status(201).json({
+      message: 'Lead captured successfully.',
+      lead: {
+        id: lead._id.toString(),
+        fullName: lead.fullName,
+        email: lead.email,
+        phone: lead.phone,
+        schoolDept: lead.schoolDept,
+        source: lead.source,
+        emailSentCount: lead.emailSentCount,
+        createdAt: lead.createdAt,
+      },
+    });
+  }
+
+  const lead = {
+    id: `lead-${Date.now()}`,
+    fullName,
+    email,
+    phone,
+    schoolDept: schoolDept || institution || '',
+    source: source || 'Landing_Page',
+    emailSentCount: 0,
+    createdAt: new Date().toISOString(),
+  };
+
+  leads.push(lead);
+
+  return res.status(201).json({
+    message: 'Lead captured successfully.',
+    lead,
+  });
+});
+
+app.get('/api/v1/leads', requireAuth, requireAdmin, (req, res) => {
+  const { institution, source } = req.query;
+
+  let filteredLeads = [...leads];
+
+  if (institution) {
+    filteredLeads = filteredLeads.filter((lead) =>
+      (lead.schoolDept || '').toLowerCase().includes(String(institution).toLowerCase())
+    );
+  }
+
+  if (source) {
+    filteredLeads = filteredLeads.filter((lead) => lead.source === source);
+  }
+
+  return res.json({
+    total: filteredLeads.length,
+    leads: filteredLeads,
+  });
+});
+
+app.post('/api/v1/leads/trigger-outreach', requireAuth, requireAdmin, (req, res) => {
+  const { leadIds } = req.body || {};
+
+  const selectedLeads = leadIds?.length
+    ? leads.filter((lead) => leadIds.includes(lead.id))
+    : leads;
+
+  selectedLeads.forEach((lead) => {
+    lead.emailSentCount += 1;
+  });
+
+  return res.json({
+    message: 'Outreach workflow triggered successfully.',
+    triggered: selectedLeads.length,
+    leads: selectedLeads,
+  });
+});
+
+app.get('/api/v1/courses', async (req, res) => {
+  if (databaseReady) {
+    const records = await Course.find({}).lean();
+    const payload = records.map((course) => ({
+      id: course._id.toString(),
+      slug: course.slug,
+      title: course.title,
+      description: course.description,
+      duration: course.duration,
+      price: course.price,
+      currency: course.currency,
+      level: course.level,
+      lessons: course.lessons,
+    }));
+
+    return res.json({ courses: payload.length ? payload : defaultCourses });
+  }
+
+  return res.json({ courses });
+});
+
+app.get('/api/v1/courses/:courseId', async (req, res) => {
+  if (databaseReady) {
+    const course = await Course.findOne({ $or: [{ _id: req.params.courseId }, { slug: req.params.courseId }] }).lean();
+
+    if (!course) {
+      return res.status(404).json({ message: 'Course not found.' });
+    }
+
+    return res.json({
+      course: {
+        id: course._id.toString(),
+        slug: course.slug,
+        title: course.title,
+        description: course.description,
+        duration: course.duration,
+        price: course.price,
+        currency: course.currency,
+        level: course.level,
+        lessons: course.lessons,
+      },
+    });
+  }
+
+  const course = courses.find((item) => item.id === req.params.courseId || item.slug === req.params.courseId);
+
+  if (!course) {
+    return res.status(404).json({ message: 'Course not found.' });
+  }
+
+  return res.json({ course });
+});
+
+app.get('/api/v1/courses/:courseId/lessons', requireAuth, async (req, res) => {
+  if (databaseReady) {
+    const user = await User.findById(req.user.id);
+    const course = await Course.findOne({ $or: [{ _id: req.params.courseId }, { slug: req.params.courseId }] });
+
+    if (!course) {
+      return res.status(404).json({ message: 'Course not found.' });
+    }
+
+    const hasAccess = user && (user.paymentStatus || user.enrolledCourses.includes(course._id.toString()) || user.enrolledCourses.includes(course.slug));
+
+    if (!hasAccess) {
+      return res.status(403).json({ message: 'Enrollment required to access this course.' });
+    }
+
+    return res.json({
+      courseId: course._id.toString(),
+      title: course.title,
+      lessons: course.lessons,
+    });
+  }
+
+  const user = users.find((item) => item.id === req.user.id);
+  const course = courses.find((item) => item.id === req.params.courseId || item.slug === req.params.courseId);
+
+  if (!course) {
+    return res.status(404).json({ message: 'Course not found.' });
+  }
+
+  if (!user || (!user.paymentStatus && !user.enrolledCourses.includes(course.id))) {
+    return res.status(403).json({ message: 'Enrollment required to access this course.' });
+  }
+
+  return res.json({
+    courseId: course.id,
+    title: course.title,
+    lessons: course.lessons,
+  });
+});
+
+app.post('/api/v1/payments/initialize', requireAuth, async (req, res) => {
+  const { courseId } = req.body;
+
+  let course;
+
+  if (databaseReady) {
+    course = await Course.findOne({ $or: [{ _id: courseId }, { slug: courseId }] });
+  } else {
+    course = courses.find((item) => item.id === courseId || item.slug === courseId);
+  }
+
+  if (!course) {
+    return res.status(404).json({ message: 'Course not found.' });
+  }
+
+  const reference = `GDS-${Date.now()}`;
+
+  if (databaseReady) {
+    await Enrollment.create({
+      userId: req.user.id,
+      courseId: course._id.toString(),
+      paymentReference: reference,
+      paymentProvider: 'paystack',
+      status: 'pending',
+      paid: false,
+    });
+  }
+
+  return res.json({
+    reference,
+    amount: course.price,
+    currency: course.currency,
+    course: course.title,
+    authorizationUrl: `https://checkout.example.com/pay/${reference}?course=${courseId}`,
+  });
+});
+
+app.post('/api/v1/payments/webhook', async (req, res) => {
+  const { courseId, userEmail, reference, status } = req.body;
+
+  if (status !== 'success') {
+    return res.status(200).json({ message: 'Payment still pending.' });
+  }
+
+  if (databaseReady) {
+    const user = await User.findOne({ email: String(userEmail).toLowerCase() });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found for payment confirmation.' });
+    }
+
+    const course = await Course.findOne({ $or: [{ _id: courseId }, { slug: courseId }] });
+
+    user.paymentStatus = true;
+    if (course && !user.enrolledCourses.includes(course._id.toString())) {
+      user.enrolledCourses.push(course._id.toString());
+    }
+
+    await user.save();
+
+    await Enrollment.updateOne(
+      { paymentReference: reference },
+      { $set: { paid: true, status: 'paid' } },
+      { upsert: true }
+    );
+
+    return res.json({
+      message: 'Payment verified and course access unlocked.',
+      reference,
+      user: sanitizeUser(user),
+    });
+  }
+
+  const user = findUserByEmail(userEmail);
+
+  if (!user) {
+    return res.status(404).json({ message: 'User not found for payment confirmation.' });
+  }
+
+  user.paymentStatus = true;
+
+  if (!user.enrolledCourses.includes(courseId)) {
+    user.enrolledCourses.push(courseId);
+  }
+
+  return res.json({
+    message: 'Payment verified and course access unlocked.',
+    reference,
+    user: sanitizeUser(user),
+  });
+});
+
+app.get('/api/v1/payments/verify/:reference', requireAuth, (req, res) => {
+  return res.json({
+    reference: req.params.reference,
+    status: 'success',
+    message: 'Payment verified. Course access unlocked.',
+  });
+});
+
+app.get('/api/v1/admin/dashboard-stats', requireAuth, requireAdmin, (req, res) => {
+  const activeStudents = users.filter((user) => user.role === 'student' && user.paymentStatus).length;
+  const totalRevenue = users
+    .filter((user) => user.role === 'student' && user.paymentStatus)
+    .reduce((sum) => sum + 45000, 0);
+
+  return res.json({
+    totalLeads: leads.length,
+    conversionRate: leads.length ? ((activeStudents / leads.length) * 100).toFixed(2) : 0,
+    totalRevenue,
+    activeStudents,
+  });
+});
+
+app.get('/api/v1/admin/enrolled-students', requireAuth, requireAdmin, (req, res) => {
+  const students = users
+    .filter((user) => user.role === 'student' && user.paymentStatus)
+    .map((user) => sanitizeUser(user));
+
+  return res.json({ students });
+});
+
+app.use((error, req, res, next) => {
+  console.error(error);
+  res.status(500).json({ message: 'Internal server error.' });
+});
+
+connectDB().then((connected) => {
+  databaseReady = connected;
+  app.listen(port, () => {
+    if (connected) {
+      console.log('MongoDB connected successfully.');
+    } else {
+      console.log('MongoDB URI not configured. Continuing with in-memory storage for local development.');
+    }
+    console.log(`GDS Ticketing API listening on http://localhost:${port}`);
+  });
+});
