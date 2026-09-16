@@ -40,20 +40,7 @@ app.use(express.json({
 
 const leads = [];
 const enrollments = [];
-const users = [
-  {
-    id: 'admin-1',
-    fullName: 'GDS Admin',
-    email: 'admin@gdsticketing.com',
-    phone: '+2348000000000',
-    institution: 'GDS Academy',
-    role: 'super_admin',
-    passwordHash: bcrypt.hashSync('Admin123!', 10),
-    enrolledCourses: ['sabre-core'],
-    paymentStatus: true,
-    createdAt: new Date().toISOString(),
-  },
-];
+const users = [];
 
 const defaultCourses = [
   {
@@ -97,7 +84,7 @@ const courses = defaultCourses;
 const issueToken = (user) =>
   jwt.sign(
     { id: user.id, email: user.email, role: user.role },
-    process.env.JWT_SECRET || 'dev-secret-key',
+    process.env.JWT_SECRET,
     { expiresIn: '7d' }
   );
 
@@ -121,6 +108,10 @@ const findUserByEmail = (email) =>
 
 const findUserById = (id) => users.find((user) => user.id === id);
 
+const normalizeCurrency = (currency) => String(currency || '').trim().toUpperCase();
+
+const getCourseAmountMinor = (course) => Math.round(Number(course.price) * 100);
+
 const buildUserPayload = async (userDocument) => {
   if (!userDocument) return null;
 
@@ -132,6 +123,10 @@ const buildUserPayload = async (userDocument) => {
 };
 
 const requireAuth = (req, res, next) => {
+  if (!process.env.JWT_SECRET) {
+    return res.status(503).json({ message: 'JWT authentication is not configured on the server.' });
+  }
+
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -141,7 +136,7 @@ const requireAuth = (req, res, next) => {
   const token = authHeader.split(' ')[1];
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret-key');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded;
     next();
   } catch (error) {
@@ -313,6 +308,34 @@ app.patch('/api/v1/admin/users/:userId/role', requireAuth, requireSuperAdmin, as
 
   user.role = role;
   return res.json({ user: sanitizeUser(user) });
+});
+
+app.delete('/api/v1/admin/users/:userId', requireAuth, requireSuperAdmin, async (req, res) => {
+  if (req.params.userId === req.user.id) {
+    return res.status(400).json({ message: 'The active super admin account cannot be deleted.' });
+  }
+
+  if (databaseReady) {
+    const user = await User.findById(req.params.userId);
+    if (!user) return res.status(404).json({ message: 'User could not be found.' });
+    if (user.role === 'super_admin') return res.status(403).json({ message: 'A super admin account cannot be deleted.' });
+
+    await Enrollment.deleteMany({ userId: req.params.userId });
+    await User.deleteOne({ _id: req.params.userId });
+    return res.json({ message: 'User and enrollment records deleted.' });
+  }
+
+  const userIndex = users.findIndex((user) => user.id === req.params.userId);
+  if (userIndex === -1) return res.status(404).json({ message: 'User could not be found.' });
+  if (users[userIndex].role === 'super_admin') return res.status(403).json({ message: 'A super admin account cannot be deleted.' });
+
+  enrollments.splice(
+    0,
+    enrollments.length,
+    ...enrollments.filter((enrollment) => enrollment.userId !== req.params.userId)
+  );
+  users.splice(userIndex, 1);
+  return res.json({ message: 'User and enrollment records deleted.' });
 });
 
 app.post('/api/v1/admin/uploads/signature', requireAuth, requireAdmin, (req, res) => {
@@ -813,8 +836,8 @@ app.post('/api/v1/payments/initialize', requireAuth, async (req, res) => {
     },
     body: JSON.stringify({
       email: user.email,
-      amount: Math.round(Number(course.price) * 100),
-      currency: course.currency || 'NGN',
+      amount: getCourseAmountMinor(course),
+      currency: normalizeCurrency(course.currency || 'NGN'),
       reference,
       callback_url: process.env.PAYSTACK_CALLBACK_URL || 'https://gdsticketing.vercel.app/payment/callback',
       metadata: { userId: req.user.id, courseId: storedCourseId },
@@ -860,16 +883,33 @@ app.post('/api/v1/payments/webhook', async (req, res) => {
   const reference = data.reference;
 
   if (databaseReady) {
-    await Enrollment.updateOne({ paymentReference: reference, status: 'pending_payment' }, { $set: { paid: true, status: 'paid_pending_approval' } });
+    const enrollment = await Enrollment.findOne({ paymentReference: reference, status: 'pending_payment' });
+    if (!enrollment) {
+      return res.status(404).json({ message: 'Payment reference is not linked to a pending enrollment.' });
+    }
+
+    const course = await Course.findOne({ _id: enrollment.courseId });
+    const expectedCurrency = normalizeCurrency(course?.currency || 'NGN');
+    if (!course || Number(data.amount) !== getCourseAmountMinor(course) || normalizeCurrency(data.currency) !== expectedCurrency) {
+      return res.status(400).json({ message: 'Paystack amount or currency does not match the course.' });
+    }
+
+    await Enrollment.updateOne({ _id: enrollment._id }, { $set: { paid: true, status: 'paid_pending_approval' } });
     return res.json({ message: 'Payment received and queued for admin approval.', reference });
   }
 
   const enrollment = enrollments.find((item) => item.paymentReference === reference);
 
-  if (enrollment) {
-    enrollment.status = 'paid_pending_approval';
-    enrollment.paid = true;
+  const course = enrollment && courses.find((item) => item.id === enrollment.courseId);
+  if (!enrollment || !course) {
+    return res.status(404).json({ message: 'Payment reference is not linked to a pending enrollment.' });
   }
+  if (Number(data.amount) !== getCourseAmountMinor(course) || normalizeCurrency(data.currency) !== normalizeCurrency(course.currency || 'NGN')) {
+    return res.status(400).json({ message: 'Paystack amount or currency does not match the course.' });
+  }
+
+  enrollment.status = 'paid_pending_approval';
+  enrollment.paid = true;
 
   return res.json({ message: 'Payment received and queued for admin approval.', reference });
 });
@@ -883,26 +923,52 @@ app.get('/api/v1/payments/verify/:reference', requireAuth, async (req, res) => {
     headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` },
   });
   const payload = await paystackResponse.json();
-  if (!paystackResponse.ok || !payload.status) {
+  if (!paystackResponse.ok || !payload.status || !payload.data) {
     return res.status(400).json({ message: payload.message || 'Payment has not been confirmed.' });
   }
 
-  const paymentStatus = payload.data?.status === 'success' ? 'paid_pending_approval' : 'failed';
+  const enrollment = databaseReady
+    ? await Enrollment.findOne({ paymentReference: req.params.reference, userId: req.user.id })
+    : enrollments.find((item) => item.paymentReference === req.params.reference && item.userId === req.user.id);
+  if (!enrollment) {
+    return res.status(404).json({ message: 'Payment reference is not linked to your enrollment.' });
+  }
+
+  const course = databaseReady
+    ? await Course.findOne({ _id: enrollment.courseId })
+    : courses.find((item) => item.id === enrollment.courseId);
+  if (!course) {
+    return res.status(404).json({ message: 'The course for this payment could not be found.' });
+  }
+
+  const transactionStatus = String(payload.data.status || '').toLowerCase();
+  const paymentStatus = transactionStatus === 'success'
+    ? 'paid_pending_approval'
+    : ['failed', 'abandoned', 'reversed'].includes(transactionStatus)
+      ? 'failed'
+      : 'pending_payment';
+
+  if (transactionStatus === 'success' && (Number(payload.data.amount) !== getCourseAmountMinor(course) || normalizeCurrency(payload.data.currency) !== normalizeCurrency(course.currency || 'NGN'))) {
+    return res.status(400).json({ message: 'Paystack amount or currency does not match the course.' });
+  }
+
   const paymentMessage = paymentStatus === 'failed'
     ? 'Payment failed. You can try checkout again.'
-    : 'Payment verified and awaiting admin approval.';
+    : paymentStatus === 'pending_payment'
+      ? 'Payment is still pending with Paystack.'
+      : 'Payment verified and awaiting admin approval.';
 
   if (databaseReady) {
-    await Enrollment.updateOne(
+    const updateResult = await Enrollment.updateOne(
       { paymentReference: req.params.reference, userId: req.user.id },
       { $set: { paid: paymentStatus === 'paid_pending_approval', status: paymentStatus } }
     );
-  } else {
-    const enrollment = enrollments.find((item) => item.paymentReference === req.params.reference && item.userId === req.user.id);
-    if (enrollment) {
-      enrollment.status = paymentStatus;
-      enrollment.paid = paymentStatus === 'paid_pending_approval';
+    if (updateResult.matchedCount !== 1) {
+      return res.status(404).json({ message: 'Payment reference is not linked to your enrollment.' });
     }
+  } else {
+    enrollment.status = paymentStatus;
+    enrollment.paid = paymentStatus === 'paid_pending_approval';
   }
 
   return res.json({ reference: req.params.reference, status: paymentStatus, message: paymentMessage });
@@ -929,7 +995,7 @@ app.get('/api/v1/enrollments/me', requireAuth, async (req, res) => {
   }
 
   return res.json({
-    enrollments: enrollments.filter((item) => item.userId === req.user.id).map((item) => ({
+    enrollments: enrollments.filter((item) => item.userId === req.user.id).reverse().map((item) => ({
       ...item,
       course: courses.find((course) => course.id === item.courseId) || null,
     })),
@@ -1058,6 +1124,11 @@ const ensureSuperAdmin = async () => {
 };
 
 connectDB().then(async (connected) => {
+  if (process.env.NODE_ENV === 'production' && (!connected || !process.env.JWT_SECRET || !process.env.PAYSTACK_SECRET_KEY)) {
+    console.error('Production startup blocked: MongoDB, JWT_SECRET, and PAYSTACK_SECRET_KEY are required.');
+    process.exit(1);
+  }
+
   databaseReady = connected;
   await ensureSuperAdmin();
   app.listen(port, () => {

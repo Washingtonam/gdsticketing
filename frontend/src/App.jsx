@@ -79,7 +79,9 @@ const formatMoney = (amount) =>
 
 function App() {
   const [view, setView] = useState('landing');
+  const [adminSection, setAdminSection] = useState('dashboard');
   const [authMode, setAuthMode] = useState('login');
+  const [showPassword, setShowPassword] = useState(false);
   const [token, setToken] = useState(() => localStorage.getItem('gds_token') || '');
   const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('gds_user') || 'null'));
   const [leadForm, setLeadForm] = useState(initialLeadForm);
@@ -196,7 +198,9 @@ function App() {
 
         setStatus(payload.status === 'failed'
           ? 'Payment failed. Please try again when you are ready.'
-          : 'Payment successful. Your course is now waiting for admin approval.');
+          : payload.status === 'pending_payment'
+            ? 'Paystack is still processing the payment. Your course will update when the payment is confirmed.'
+            : 'Payment successful. Your course is now waiting for admin approval.');
         setEnrollmentRefreshKey((value) => value + 1);
         setView('dashboard');
         window.history.replaceState({}, '', '/');
@@ -432,6 +436,23 @@ function App() {
       setStatus(error.message || 'Unable to start enrollment checkout.');
     } finally {
       setCheckoutLoading(false);
+    }
+  };
+
+  const handleDeleteUser = async (account) => {
+    if (!window.confirm(`Delete ${account.fullName}'s account and enrollment records? This cannot be undone.`)) return;
+
+    try {
+      const response = await fetch(`${API_URL}/api/v1/admin/users/${account.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.message || 'Unable to delete user.');
+      setAdminUsers((previous) => previous.filter((item) => item.id !== account.id));
+      setStatus(`${account.fullName} and their enrollment records were deleted.`);
+    } catch (error) {
+      setStatus(error.message || 'Unable to delete user.');
     }
   };
 
@@ -947,14 +968,25 @@ function App() {
 
               <label>
                 Password
-                <input
-                  type="password"
-                  name="password"
-                  value={authForm.password}
-                  onChange={handleAuthChange}
-                  placeholder="Enter your password"
-                  required
-                />
+                <span className="password-field">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    name="password"
+                    value={authForm.password}
+                    onChange={handleAuthChange}
+                    placeholder="Enter your password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle"
+                    onClick={() => setShowPassword((visible) => !visible)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    title={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? 'Hide' : 'Show'}
+                  </button>
+                </span>
               </label>
 
               <button type="submit" className="primary-btn block-btn">
@@ -998,6 +1030,16 @@ function App() {
             ))}
           </div>
 
+          {['admin', 'super_admin'].includes(user.role) && (
+            <nav className="admin-sidebar" aria-label="Admin sections">
+              <p className="mini-label">Workspace</p>
+              <button type="button" className={adminSection === 'dashboard' ? 'active' : ''} onClick={() => setAdminSection('dashboard')}>Dashboard</button>
+              <button type="button" className={adminSection === 'payments' ? 'active' : ''} onClick={() => setAdminSection('payments')}>Payment review</button>
+              <button type="button" className={adminSection === 'catalog' ? 'active' : ''} onClick={() => setAdminSection('catalog')}>Catalog controls</button>
+              {user.role === 'super_admin' && <button type="button" className={adminSection === 'owner' ? 'active' : ''} onClick={() => setAdminSection('owner')}>Owner controls</button>}
+            </nav>
+          )}
+
           {user.role === 'student' && (
             <>
               <div className="dashboard-card">
@@ -1006,13 +1048,16 @@ function App() {
                   {courses.map((course) => {
                     const enrollment = enrollments.find((item) => item.courseId === course.id || item.course?.id === course.id);
                     const isApproved = enrollment?.status === 'approved';
+                    const isRetryable = enrollment?.status === 'failed';
                     const buttonLabel = isApproved
                       ? 'Access approved'
                       : enrollment?.status === 'paid_pending_approval'
                         ? 'Awaiting approval'
                         : enrollment?.status === 'pending_payment'
                           ? 'Payment pending'
-                          : 'Pay with Paystack';
+                          : isRetryable
+                            ? 'Retry payment'
+                            : 'Pay with Paystack';
 
                     return (
                       <article className="pricing-card" key={course.id || course.slug}>
@@ -1023,7 +1068,7 @@ function App() {
                           type="button"
                           className="secondary-btn full-width"
                           onClick={() => handleEnrollment(course)}
-                          disabled={Boolean(enrollment) || checkoutLoading}
+                          disabled={(Boolean(enrollment) && !isRetryable) || checkoutLoading}
                         >
                           {checkoutLoading && !enrollment ? 'Preparing checkout...' : buttonLabel}
                         </button>
@@ -1062,7 +1107,7 @@ function App() {
             </>
           )}
 
-          {['admin', 'super_admin'].includes(user.role) && (
+          {['admin', 'super_admin'].includes(user.role) && adminSection === 'payments' && (
             <div className="admin-panel">
               <div className="admin-panel-heading">
                 <div>
@@ -1095,7 +1140,7 @@ function App() {
             </div>
           )}
 
-          {user.role === 'super_admin' && (
+          {user.role === 'super_admin' && adminSection === 'owner' && (
             <div className="admin-panel">
               <div className="admin-panel-heading">
                 <div>
@@ -1113,6 +1158,7 @@ function App() {
                       <th>Role</th>
                       <th>Enrollment</th>
                       <th>Access</th>
+                      <th>Manage</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1134,6 +1180,13 @@ function App() {
                             </select>
                           )}
                         </td>
+                        <td>
+                          {account.role === 'super_admin' ? (
+                            <span className="muted-text">Protected</span>
+                          ) : (
+                            <button type="button" className="text-btn danger-btn" onClick={() => handleDeleteUser(account)}>Delete</button>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1142,7 +1195,7 @@ function App() {
             </div>
           )}
 
-          {['admin', 'super_admin'].includes(user.role) && (
+          {['admin', 'super_admin'].includes(user.role) && adminSection === 'catalog' && (
             <div className="admin-panel">
               <div className="admin-panel-heading">
                 <div>

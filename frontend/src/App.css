@@ -335,6 +335,34 @@ button {
   padding: 0.82rem 0.9rem;
 }
 
+.password-field {
+  position: relative;
+  display: block;
+}
+
+.password-field input {
+  padding-right: 4.5rem;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  padding: 5px 7px;
+  border-radius: 6px;
+  color: #7dd3fc;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.password-toggle:hover,
+.password-toggle:focus-visible {
+  background: rgba(34, 211, 238, 0.12);
+}
+
 .block-btn {
   width: 100%;
   margin-top: 8px;
@@ -419,6 +447,40 @@ button {
 .curriculum-section,
 .dashboard-shell {
   margin-top: 64px;
+}
+
+.admin-sidebar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 24px 0 18px;
+  padding: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 14px;
+  background: rgba(8, 24, 39, 0.72);
+  overflow-x: auto;
+}
+
+.admin-sidebar .mini-label {
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.admin-sidebar button {
+  padding: 10px 13px;
+  border-radius: 9px;
+  color: #a9bdd6;
+  background: transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 0.84rem;
+}
+
+.admin-sidebar button:hover,
+.admin-sidebar button.active {
+  color: #10283a;
+  background: #f7b749;
+  font-weight: 700;
 }
 
 .pricing-section,
@@ -686,6 +748,10 @@ button {
   padding: 7px 9px;
   background: #10243a;
   color: #f8fbff;
+}
+
+.danger-btn {
+  color: #fda4af;
 }
 
 .course-editor {
