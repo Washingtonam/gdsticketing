@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const dotenv = require('dotenv');
 const cloudinary = require('cloudinary').v2;
 const { connectDB } = require('./config/db');
@@ -31,7 +32,11 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json());
+app.use(express.json({
+  verify: (req, res, buffer) => {
+    req.rawBody = buffer;
+  },
+}));
 
 const leads = [];
 const enrollments = [];
@@ -651,7 +656,6 @@ app.get('/api/v1/courses', async (req, res) => {
       status: course.status,
       featured: course.featured,
       thumbnailUrl: course.thumbnailUrl,
-      lessons: course.lessons,
     }));
 
     return res.json({ courses: payload.length ? payload : defaultCourses });
@@ -681,7 +685,6 @@ app.get('/api/v1/courses/:courseId', async (req, res) => {
         price: course.price,
         currency: course.currency,
         level: course.level,
-        lessons: course.lessons,
       },
     });
   }
@@ -706,13 +709,13 @@ app.get('/api/v1/courses/:courseId/lessons', requireAuth, async (req, res) => {
       return res.status(404).json({ message: 'Course not found.' });
     }
 
-    const paidEnrollment = await Enrollment.findOne({
+    const approvedEnrollment = await Enrollment.findOne({
       userId: req.user.id,
       courseId: course._id.toString(),
-      status: 'paid',
+      status: 'approved',
       paid: true,
     });
-    const hasAccess = user && (paidEnrollment || user.enrolledCourses.includes(course._id.toString()) || user.enrolledCourses.includes(course.slug));
+    const hasAccess = user && (approvedEnrollment || user.enrolledCourses.includes(course._id.toString()) || user.enrolledCourses.includes(course.slug));
 
     if (!hasAccess) {
       return res.status(403).json({ message: 'Enrollment required to access this course.' });
@@ -732,11 +735,11 @@ app.get('/api/v1/courses/:courseId/lessons', requireAuth, async (req, res) => {
     return res.status(404).json({ message: 'Course not found.' });
   }
 
-  const paidEnrollment = enrollments.find(
-    (enrollment) => enrollment.userId === req.user.id && enrollment.courseId === course.id && enrollment.status === 'paid'
+  const approvedEnrollment = enrollments.find(
+    (enrollment) => enrollment.userId === req.user.id && enrollment.courseId === course.id && enrollment.status === 'approved'
   );
 
-  if (!user || (!paidEnrollment && !user.enrolledCourses.includes(course.id))) {
+  if (!user || (!approvedEnrollment && !user.enrolledCourses.includes(course.id))) {
     return res.status(403).json({ message: 'Enrollment required to access this course.' });
   }
 
@@ -762,25 +765,71 @@ app.post('/api/v1/payments/initialize', requireAuth, async (req, res) => {
     return res.status(404).json({ message: 'Course not found.' });
   }
 
-  const reference = `GDS-${Date.now()}`;
+  if (!process.env.PAYSTACK_SECRET_KEY) {
+    return res.status(503).json({ message: 'Paystack is not configured on the server.' });
+  }
+
+  const user = databaseReady ? await User.findById(req.user.id) : findUserById(req.user.id);
+  if (!user) {
+    return res.status(404).json({ message: 'Student account not found.' });
+  }
+
+  const storedCourseId = databaseReady ? course._id.toString() : course.id;
+  const existingEnrollment = databaseReady
+    ? await Enrollment.findOne({ userId: req.user.id, courseId: storedCourseId, status: { $in: ['pending_payment', 'paid_pending_approval', 'approved'] } })
+    : enrollments.find((item) => item.userId === req.user.id && item.courseId === storedCourseId && ['pending_payment', 'paid_pending_approval', 'approved'].includes(item.status));
+
+  if (existingEnrollment) {
+    return res.status(409).json({ message: 'You already have an active enrollment for this course.' });
+  }
+
+  const reference = `GDS-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
 
   if (databaseReady) {
     await Enrollment.create({
       userId: req.user.id,
-      courseId: course._id.toString(),
+      courseId: storedCourseId,
       paymentReference: reference,
       paymentProvider: 'paystack',
-      status: 'pending',
+      status: 'pending_payment',
       paid: false,
     });
   } else {
     enrollments.push({
+      id: `enrollment-${Date.now()}`,
       userId: req.user.id,
       courseId: course.id,
       paymentReference: reference,
-      status: 'pending',
+      status: 'pending_payment',
       paid: false,
     });
+  }
+
+  const paystackResponse = await fetch('https://api.paystack.co/transaction/initialize', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      email: user.email,
+      amount: Math.round(Number(course.price) * 100),
+      currency: course.currency || 'NGN',
+      reference,
+      callback_url: process.env.PAYSTACK_CALLBACK_URL || 'https://gdsticketing.vercel.app/payment/callback',
+      metadata: { userId: req.user.id, courseId: storedCourseId },
+    }),
+  });
+  const paystackPayload = await paystackResponse.json();
+
+  if (!paystackResponse.ok || !paystackPayload.status) {
+    if (databaseReady) {
+      await Enrollment.deleteOne({ paymentReference: reference });
+    } else {
+      const enrollmentIndex = enrollments.findIndex((item) => item.paymentReference === reference);
+      if (enrollmentIndex >= 0) enrollments.splice(enrollmentIndex, 1);
+    }
+    return res.status(502).json({ message: paystackPayload.message || 'Unable to initialize Paystack checkout.' });
   }
 
   return res.json({
@@ -788,80 +837,164 @@ app.post('/api/v1/payments/initialize', requireAuth, async (req, res) => {
     amount: course.price,
     currency: course.currency,
     course: course.title,
-    authorizationUrl: `https://checkout.example.com/pay/${reference}?course=${courseId}`,
+    authorizationUrl: paystackPayload.data.authorization_url,
   });
 });
 
 app.post('/api/v1/payments/webhook', async (req, res) => {
-  const { courseId, userEmail, reference, status } = req.body;
+  const signature = req.headers['x-paystack-signature'];
+  const expectedSignature = crypto.createHmac('sha512', process.env.PAYSTACK_SECRET_KEY || '').update(req.rawBody || '').digest('hex');
+  const validSignature = signature && process.env.PAYSTACK_SECRET_KEY
+    && String(signature).length === expectedSignature.length
+    && crypto.timingSafeEqual(Buffer.from(String(signature)), Buffer.from(expectedSignature));
 
-  if (status !== 'success') {
-    return res.status(200).json({ message: 'Payment still pending.' });
+  if (!validSignature) {
+    return res.status(401).json({ message: 'Invalid Paystack signature.' });
   }
+
+  const { event, data } = req.body || {};
+  if (event !== 'charge.success' || !data?.reference) {
+    return res.status(200).json({ message: 'Event received.' });
+  }
+
+  const reference = data.reference;
 
   if (databaseReady) {
-    const user = await User.findOne({ email: String(userEmail).toLowerCase() });
-
-    if (!user) {
-      return res.status(404).json({ message: 'User not found for payment confirmation.' });
-    }
-
-    const course = await Course.findOne({ $or: [{ _id: courseId }, { slug: courseId }] });
-
-    user.paymentStatus = true;
-    if (course && !user.enrolledCourses.includes(course._id.toString())) {
-      user.enrolledCourses.push(course._id.toString());
-    }
-
-    await user.save();
-
-    await Enrollment.updateOne(
-      { paymentReference: reference },
-      { $set: { paid: true, status: 'paid' } },
-      { upsert: true }
-    );
-
-    return res.json({
-      message: 'Payment verified and course access unlocked.',
-      reference,
-      user: sanitizeUser(user),
-    });
+    await Enrollment.updateOne({ paymentReference: reference, status: 'pending_payment' }, { $set: { paid: true, status: 'paid_pending_approval' } });
+    return res.json({ message: 'Payment received and queued for admin approval.', reference });
   }
 
-  const user = findUserByEmail(userEmail);
-
-  if (!user) {
-    return res.status(404).json({ message: 'User not found for payment confirmation.' });
-  }
-
-  user.paymentStatus = true;
-
-  if (!user.enrolledCourses.includes(courseId)) {
-    user.enrolledCourses.push(courseId);
-  }
-
-  const enrollment = enrollments.find(
-    (item) => item.paymentReference === reference && item.userId === user.id && item.courseId === courseId
-  );
+  const enrollment = enrollments.find((item) => item.paymentReference === reference);
 
   if (enrollment) {
-    enrollment.status = 'paid';
+    enrollment.status = 'paid_pending_approval';
     enrollment.paid = true;
   }
 
+  return res.json({ message: 'Payment received and queued for admin approval.', reference });
+});
+
+app.get('/api/v1/payments/verify/:reference', requireAuth, async (req, res) => {
+  if (!process.env.PAYSTACK_SECRET_KEY) {
+    return res.status(503).json({ message: 'Paystack is not configured on the server.' });
+  }
+
+  const paystackResponse = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(req.params.reference)}`, {
+    headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` },
+  });
+  const payload = await paystackResponse.json();
+  if (!paystackResponse.ok || !payload.status || payload.data?.status !== 'success') {
+    return res.status(400).json({ message: payload.message || 'Payment has not been confirmed.' });
+  }
+
+  if (databaseReady) {
+    await Enrollment.updateOne({ paymentReference: req.params.reference, userId: req.user.id }, { $set: { paid: true, status: 'paid_pending_approval' } });
+  } else {
+    const enrollment = enrollments.find((item) => item.paymentReference === req.params.reference && item.userId === req.user.id);
+    if (enrollment) {
+      enrollment.status = 'paid_pending_approval';
+      enrollment.paid = true;
+    }
+  }
+
+  return res.json({ reference: req.params.reference, status: 'paid_pending_approval', message: 'Payment verified and awaiting admin approval.' });
+});
+
+app.get('/api/v1/enrollments/me', requireAuth, async (req, res) => {
+  if (databaseReady) {
+    const records = await Enrollment.find({ userId: req.user.id }).sort({ createdAt: -1 }).lean();
+    const courseIds = records.map((record) => record.courseId);
+    const courseRecords = await Course.find({ _id: { $in: courseIds } }).lean();
+    const courseMap = new Map(courseRecords.map((course) => [course._id.toString(), course]));
+    return res.json({
+      enrollments: records.map((record) => ({
+        ...record,
+        id: record._id.toString(),
+        course: courseMap.get(record.courseId) ? {
+          id: record.courseId,
+          title: courseMap.get(record.courseId).title,
+          price: courseMap.get(record.courseId).price,
+          currency: courseMap.get(record.courseId).currency,
+        } : null,
+      })),
+    });
+  }
+
   return res.json({
-    message: 'Payment verified and course access unlocked.',
-    reference,
-    user: sanitizeUser(user),
+    enrollments: enrollments.filter((item) => item.userId === req.user.id).map((item) => ({
+      ...item,
+      course: courses.find((course) => course.id === item.courseId) || null,
+    })),
   });
 });
 
-app.get('/api/v1/payments/verify/:reference', requireAuth, (req, res) => {
+app.get('/api/v1/admin/enrollments', requireAuth, requireAdmin, async (req, res) => {
+  if (databaseReady) {
+    const records = await Enrollment.find({ status: 'paid_pending_approval' }).sort({ createdAt: -1 }).lean();
+    const userIds = records.map((record) => record.userId);
+    const courseIds = records.map((record) => record.courseId);
+    const [studentRecords, courseRecords] = await Promise.all([
+      User.find({ _id: { $in: userIds } }).lean(),
+      Course.find({ _id: { $in: courseIds } }).lean(),
+    ]);
+    const studentMap = new Map(studentRecords.map((student) => [student._id.toString(), student]));
+    const courseMap = new Map(courseRecords.map((course) => [course._id.toString(), course]));
+    return res.json({
+      enrollments: records.map((record) => ({
+        id: record._id.toString(),
+        status: record.status,
+        paid: record.paid,
+        paymentReference: record.paymentReference,
+        createdAt: record.createdAt,
+        student: studentMap.has(record.userId) ? sanitizeUser(studentMap.get(record.userId)) : null,
+        course: courseMap.has(record.courseId) ? {
+          id: record.courseId,
+          title: courseMap.get(record.courseId).title,
+          price: courseMap.get(record.courseId).price,
+          currency: courseMap.get(record.courseId).currency,
+        } : null,
+      })),
+    });
+  }
+
   return res.json({
-    reference: req.params.reference,
-    status: 'success',
-    message: 'Payment verified. Course access unlocked.',
+    enrollments: enrollments.filter((item) => item.status === 'paid_pending_approval').map((item) => ({
+      ...item,
+      student: sanitizeUser(findUserById(item.userId)),
+      course: courses.find((course) => course.id === item.courseId) || null,
+    })),
   });
+});
+
+app.patch('/api/v1/admin/enrollments/:enrollmentId/approve', requireAuth, requireAdmin, async (req, res) => {
+  if (databaseReady) {
+    const enrollment = await Enrollment.findOne({ _id: req.params.enrollmentId, status: 'paid_pending_approval' });
+    if (!enrollment) return res.status(404).json({ message: 'Paid enrollment awaiting approval was not found.' });
+
+    const user = await User.findById(enrollment.userId);
+    if (!user) return res.status(404).json({ message: 'Student account was not found.' });
+
+    enrollment.status = 'approved';
+    enrollment.approvedAt = new Date();
+    enrollment.approvedBy = req.user.id;
+    await enrollment.save();
+    if (!user.enrolledCourses.includes(enrollment.courseId)) {
+      user.enrolledCourses.push(enrollment.courseId);
+      await user.save();
+    }
+    return res.json({ message: 'Course access approved.', enrollmentId: enrollment._id.toString() });
+  }
+
+  const enrollment = enrollments.find((item) => item.id === req.params.enrollmentId && item.status === 'paid_pending_approval');
+  if (!enrollment) return res.status(404).json({ message: 'Paid enrollment awaiting approval was not found.' });
+  const user = findUserById(enrollment.userId);
+  if (!user) return res.status(404).json({ message: 'Student account was not found.' });
+
+  enrollment.status = 'approved';
+  enrollment.approvedAt = new Date().toISOString();
+  enrollment.approvedBy = req.user.id;
+  if (!user.enrolledCourses.includes(enrollment.courseId)) user.enrolledCourses.push(enrollment.courseId);
+  return res.json({ message: 'Course access approved.', enrollmentId: enrollment.id });
 });
 
 app.get('/api/v1/admin/dashboard-stats', requireAuth, requireAdmin, (req, res) => {

@@ -85,6 +85,8 @@ function App() {
   const [leadForm, setLeadForm] = useState(initialLeadForm);
   const [authForm, setAuthForm] = useState(initialAuthForm);
   const [courses, setCourses] = useState([]);
+  const [enrollments, setEnrollments] = useState([]);
+  const [adminEnrollments, setAdminEnrollments] = useState([]);
   const [adminCourses, setAdminCourses] = useState([]);
   const [courseForm, setCourseForm] = useState(initialCourseForm);
   const [editingCourseId, setEditingCourseId] = useState('');
@@ -183,6 +185,44 @@ function App() {
     };
 
     loadAdminCourses();
+  }, [token, user?.role]);
+
+  useEffect(() => {
+    if (!token || user?.role !== 'student') return;
+
+    const loadEnrollments = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/v1/enrollments/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.message || 'Unable to load enrollments.');
+        setEnrollments(payload.enrollments || []);
+      } catch (error) {
+        setStatus(error.message || 'Unable to load enrollments.');
+      }
+    };
+
+    loadEnrollments();
+  }, [token, user?.role]);
+
+  useEffect(() => {
+    if (!token || !['admin', 'super_admin'].includes(user?.role)) return;
+
+    const loadAdminEnrollments = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/v1/admin/enrollments`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.message || 'Unable to load payment approvals.');
+        setAdminEnrollments(payload.enrollments || []);
+      } catch (error) {
+        setStatus(error.message || 'Unable to load payment approvals.');
+      }
+    };
+
+    loadAdminEnrollments();
   }, [token, user?.role]);
 
   useEffect(() => {
@@ -344,12 +384,27 @@ function App() {
         window.open(result.authorizationUrl, '_blank', 'noopener,noreferrer');
       }
 
-      setStatus(`Checkout started for ${course.title}. Complete the payment flow and your course access will unlock.`);
+      setStatus(`Payment started for ${course.title}. After Paystack confirms it, an admin will approve your access.`);
       setView('dashboard');
     } catch (error) {
       setStatus(error.message || 'Unable to start enrollment checkout.');
     } finally {
       setCheckoutLoading(false);
+    }
+  };
+
+  const approveEnrollment = async (enrollment) => {
+    try {
+      const response = await fetch(`${API_URL}/api/v1/admin/enrollments/${enrollment.id}/approve`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.message || 'Unable to approve course access.');
+      setAdminEnrollments((previous) => previous.filter((item) => item.id !== enrollment.id));
+      setStatus(`Access approved for ${enrollment.student?.fullName || 'the student'}.`);
+    } catch (error) {
+      setStatus(error.message || 'Unable to approve course access.');
     }
   };
 
@@ -901,14 +956,48 @@ function App() {
           </div>
 
           {user.role === 'student' && (
-            <div className="dashboard-grid">
+            <>
+              <div className="dashboard-card">
+                <h3>Available courses</h3>
+                <div className="pricing-grid">
+                  {courses.map((course) => {
+                    const enrollment = enrollments.find((item) => item.courseId === course.id || item.course?.id === course.id);
+                    const isApproved = enrollment?.status === 'approved';
+                    const buttonLabel = isApproved
+                      ? 'Access approved'
+                      : enrollment?.status === 'paid_pending_approval'
+                        ? 'Awaiting approval'
+                        : enrollment?.status === 'pending_payment'
+                          ? 'Payment pending'
+                          : 'Pay with Paystack';
+
+                    return (
+                      <article className="pricing-card" key={course.id || course.slug}>
+                        <p className="card-name">{course.title}</p>
+                        <h3>{formatMoney(course.price)}</h3>
+                        <p className="card-copy">{course.description}</p>
+                        <button
+                          type="button"
+                          className="secondary-btn full-width"
+                          onClick={() => handleEnrollment(course)}
+                          disabled={Boolean(enrollment) || checkoutLoading}
+                        >
+                          {checkoutLoading && !enrollment ? 'Preparing checkout...' : buttonLabel}
+                        </button>
+                      </article>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="dashboard-grid">
               <div className="dashboard-card">
                 <h3>Enrollment status</h3>
                 <ul>
-                  <li>Course access: {user.paymentStatus ? 'Unlocked' : 'Awaiting payment'}</li>
+                  <li>Course access: {enrollments.some((item) => item.status === 'approved') ? 'Approved' : 'Awaiting payment or approval'}</li>
                   <li>Institution: {user.institution || 'Not provided'}</li>
                   <li>Phone: {user.phone || 'Not provided'}</li>
-                  <li>Active enrollments: {user.enrolledCourses?.length || 0}</li>
+                  <li>Active enrollments: {enrollments.filter((item) => item.status === 'approved').length}</li>
                 </ul>
               </div>
 
@@ -925,6 +1014,40 @@ function App() {
                     </>
                   )}
                 </ul>
+              </div>
+              </div>
+            </>
+          )}
+
+          {['admin', 'super_admin'].includes(user.role) && (
+            <div className="admin-panel">
+              <div className="admin-panel-heading">
+                <div>
+                  <p className="mini-label">Payment review</p>
+                  <h3>Course access approvals</h3>
+                </div>
+                <span className="admin-badge">{adminEnrollments.length} pending</span>
+              </div>
+              <p className="admin-panel-copy">Approve access only after the Paystack payment appears here as confirmed.</p>
+              <div className="user-table-wrap">
+                <table className="user-table">
+                  <thead>
+                    <tr><th>Student</th><th>Course</th><th>Amount</th><th>Reference</th><th>Action</th></tr>
+                  </thead>
+                  <tbody>
+                    {adminEnrollments.length ? adminEnrollments.map((enrollment) => (
+                      <tr key={enrollment.id}>
+                        <td><strong>{enrollment.student?.fullName || 'Unknown student'}</strong><span>{enrollment.student?.email || ''}</span></td>
+                        <td>{enrollment.course?.title || 'Unknown course'}</td>
+                        <td>{formatMoney(enrollment.course?.price)}</td>
+                        <td>{enrollment.paymentReference}</td>
+                        <td><button type="button" className="primary-btn" onClick={() => approveEnrollment(enrollment)}>Approve access</button></td>
+                      </tr>
+                    )) : (
+                      <tr><td colSpan="5" className="muted-text">No paid enrollments are waiting for approval.</td></tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
