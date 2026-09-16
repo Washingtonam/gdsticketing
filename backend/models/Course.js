@@ -21,7 +21,7 @@ const courseSchema = new mongoose.Schema(
     price: { type: Number, required: true },
     currency: { type: String, default: 'NGN' },
     level: { type: String, default: 'Beginner' },
-    status: { type: String, enum: ['draft', 'published', 'archived'], default: 'draft' },
+    status: { type: String, enum: ['draft', 'published', 'paused', 'archived'], default: 'draft' },
     featured: { type: Boolean, default: false },
     thumbnailUrl: { type: String, default: '' },
     lessons: [lessonSchema],

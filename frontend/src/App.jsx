@@ -58,6 +58,7 @@ const initialCourseForm = {
   level: 'Beginner',
   status: 'draft',
   featured: false,
+  thumbnailUrl: '',
 };
 
 const initialLessonForm = {
@@ -91,18 +92,26 @@ function App() {
   const [lessonForm, setLessonForm] = useState(initialLessonForm);
   const [editingLessonId, setEditingLessonId] = useState('');
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
   const [adminUsers, setAdminUsers] = useState([]);
   const [status, setStatus] = useState('');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
 
-  const dashboardMetrics = useMemo(
-    () => [
+  const dashboardMetrics = useMemo(() => {
+    if (['admin', 'super_admin'].includes(user?.role)) {
+      return [
+        { label: 'Role', value: user.role === 'super_admin' ? 'Owner' : 'Admin' },
+        { label: 'Courses', value: adminCourses.length },
+        { label: 'Access', value: 'Management' },
+      ];
+    }
+
+    return [
       { label: 'Enrolled', value: user?.enrolledCourses?.length || 0 },
       { label: 'Payment', value: user?.paymentStatus ? 'Active' : 'Pending' },
       { label: 'Course', value: user?.enrolledCourses?.[0] ? 'Unlocked' : 'Not started' },
-    ],
-    [user]
-  );
+    ];
+  }, [adminCourses.length, user]);
 
   useEffect(() => {
     localStorage.setItem('gds_token', token);
@@ -252,6 +261,22 @@ function App() {
     }
   };
 
+  const handleThumbnailUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setUploadingThumbnail(true);
+      const url = await uploadToCloudinary(file, 'gds-ticketing/course-thumbnails');
+      setCourseForm((previous) => ({ ...previous, thumbnailUrl: url }));
+      setStatus('Course thumbnail uploaded. Save the course to attach it.');
+    } catch (error) {
+      setStatus(error.message || 'Unable to upload course thumbnail.');
+    } finally {
+      setUploadingThumbnail(false);
+    }
+  };
+
   const handleLessonFileUpload = async (event) => {
     try {
       const url = await uploadToCloudinary(event.target.files?.[0], `gds-ticketing/courses/${selectedCourseId}`);
@@ -360,6 +385,7 @@ function App() {
       level: course.level || 'Beginner',
       status: course.status || 'draft',
       featured: Boolean(course.featured),
+      thumbnailUrl: course.thumbnailUrl || '',
     });
   };
 
@@ -722,6 +748,7 @@ function App() {
 
                 return (
                   <article key={course.id || course.slug} className={`pricing-card ${isFeatured ? 'featured' : ''}`}>
+                    {course.thumbnailUrl && <img className="course-card-image" src={course.thumbnailUrl} alt="" />}
                     <p className="card-name">{course.title}</p>
                     <h3>{course.displayPrice || formatMoney(course.price)}</h3>
                     <p className="card-copy">{course.description}</p>
@@ -873,32 +900,34 @@ function App() {
             ))}
           </div>
 
-          <div className="dashboard-grid">
-            <div className="dashboard-card">
-              <h3>Enrollment status</h3>
-              <ul>
-                <li>Course access: {user.paymentStatus ? 'Unlocked' : 'Awaiting payment'}</li>
-                <li>Institution: {user.institution || 'Not provided'}</li>
-                <li>Phone: {user.phone || 'Not provided'}</li>
-                <li>Active enrollments: {user.enrolledCourses?.length || 0}</li>
-              </ul>
-            </div>
+          {user.role === 'student' && (
+            <div className="dashboard-grid">
+              <div className="dashboard-card">
+                <h3>Enrollment status</h3>
+                <ul>
+                  <li>Course access: {user.paymentStatus ? 'Unlocked' : 'Awaiting payment'}</li>
+                  <li>Institution: {user.institution || 'Not provided'}</li>
+                  <li>Phone: {user.phone || 'Not provided'}</li>
+                  <li>Active enrollments: {user.enrolledCourses?.length || 0}</li>
+                </ul>
+              </div>
 
-            <div className="dashboard-card">
-              <h3>Learning path</h3>
-              <ul>
-                {user.enrolledCourses?.length ? (
-                  user.enrolledCourses.map((courseId) => <li key={courseId}>{courseId}</li>)
-                ) : (
-                  <>
-                    <li>Sabre command structures</li>
-                    <li>PNR creation and data handling</li>
-                    <li>Ticket issuance and fare checks</li>
-                  </>
-                )}
-              </ul>
+              <div className="dashboard-card">
+                <h3>Learning path</h3>
+                <ul>
+                  {user.enrolledCourses?.length ? (
+                    user.enrolledCourses.map((courseId) => <li key={courseId}>{courseId}</li>)
+                  ) : (
+                    <>
+                      <li>Sabre command structures</li>
+                      <li>PNR creation and data handling</li>
+                      <li>Ticket issuance and fare checks</li>
+                    </>
+                  )}
+                </ul>
+              </div>
             </div>
-          </div>
+          )}
 
           {user.role === 'super_admin' && (
             <div className="admin-panel">
@@ -979,6 +1008,11 @@ function App() {
                     <option>Advanced</option>
                   </select>
                 </label>
+                <label>
+                  Course thumbnail
+                  <input type="file" accept="image/*" onChange={handleThumbnailUpload} disabled={uploadingThumbnail} />
+                  <span className="field-hint">{uploadingThumbnail ? 'Uploading to Cloudinary...' : courseForm.thumbnailUrl ? 'Thumbnail ready to save' : 'JPG, PNG, or WebP'}</span>
+                </label>
                 <label className="course-editor-wide">
                   Description
                   <textarea name="description" value={courseForm.description} onChange={handleCourseChange} placeholder="Describe the outcome students will get." required />
@@ -988,6 +1022,7 @@ function App() {
                   <select name="status" value={courseForm.status} onChange={handleCourseChange}>
                     <option value="draft">Draft</option>
                     <option value="published">Published</option>
+                    <option value="paused">Paused</option>
                     <option value="archived">Archived</option>
                   </select>
                 </label>
@@ -1005,6 +1040,7 @@ function App() {
                 {adminCourses.map((course) => (
                   <div className="admin-course-row" key={course.id}>
                     <div>
+                      {course.thumbnailUrl && <img className="admin-course-thumb" src={course.thumbnailUrl} alt="" />}
                       <strong>{course.title}</strong>
                       <span>{formatMoney(course.price)} · {course.status || 'draft'} · {course.lessons?.length || 0} lessons</span>
                     </div>

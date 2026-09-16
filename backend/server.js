@@ -466,7 +466,7 @@ const normalizeCourseInput = (input) => ({
   price: Number(input.price),
   currency: String(input.currency || 'NGN').trim().toUpperCase(),
   level: String(input.level || 'Beginner').trim(),
-  status: ['draft', 'published', 'archived'].includes(input.status) ? input.status : 'draft',
+  status: ['draft', 'published', 'paused', 'archived'].includes(input.status) ? input.status : 'draft',
   featured: Boolean(input.featured),
   thumbnailUrl: String(input.thumbnailUrl || '').trim(),
   ...(Array.isArray(input.lessons) ? { lessons: input.lessons } : {}),
