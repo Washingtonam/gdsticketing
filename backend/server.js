@@ -3,6 +3,7 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const dotenv = require('dotenv');
+const cloudinary = require('cloudinary').v2;
 const { connectDB } = require('./config/db');
 const User = require('./models/User');
 const Lead = require('./models/Lead');
@@ -10,6 +11,15 @@ const Course = require('./models/Course');
 const Enrollment = require('./models/Enrollment');
 
 dotenv.config();
+
+if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+    secure: true,
+  });
+}
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -24,6 +34,7 @@ app.use(
 app.use(express.json());
 
 const leads = [];
+const enrollments = [];
 const users = [
   {
     id: 'admin-1',
@@ -297,6 +308,24 @@ app.patch('/api/v1/admin/users/:userId/role', requireAuth, requireSuperAdmin, as
 
   user.role = role;
   return res.json({ user: sanitizeUser(user) });
+});
+
+app.post('/api/v1/admin/uploads/signature', requireAuth, requireAdmin, (req, res) => {
+  if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+    return res.status(503).json({ message: 'Cloudinary is not configured on the server.' });
+  }
+
+  const folder = String(req.body?.folder || 'gds-ticketing/courses').replace(/[^a-zA-Z0-9/_-]/g, '');
+  const timestamp = Math.round(Date.now() / 1000);
+  const signature = cloudinary.utils.api_sign_request({ folder, timestamp }, process.env.CLOUDINARY_API_SECRET);
+
+  return res.json({
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+    apiKey: process.env.CLOUDINARY_API_KEY,
+    folder,
+    timestamp,
+    signature,
+  });
 });
 
 app.get('/api/v1/auth/me', requireAuth, async (req, res) => {
@@ -677,7 +706,13 @@ app.get('/api/v1/courses/:courseId/lessons', requireAuth, async (req, res) => {
       return res.status(404).json({ message: 'Course not found.' });
     }
 
-    const hasAccess = user && (user.paymentStatus || user.enrolledCourses.includes(course._id.toString()) || user.enrolledCourses.includes(course.slug));
+    const paidEnrollment = await Enrollment.findOne({
+      userId: req.user.id,
+      courseId: course._id.toString(),
+      status: 'paid',
+      paid: true,
+    });
+    const hasAccess = user && (paidEnrollment || user.enrolledCourses.includes(course._id.toString()) || user.enrolledCourses.includes(course.slug));
 
     if (!hasAccess) {
       return res.status(403).json({ message: 'Enrollment required to access this course.' });
@@ -697,7 +732,11 @@ app.get('/api/v1/courses/:courseId/lessons', requireAuth, async (req, res) => {
     return res.status(404).json({ message: 'Course not found.' });
   }
 
-  if (!user || (!user.paymentStatus && !user.enrolledCourses.includes(course.id))) {
+  const paidEnrollment = enrollments.find(
+    (enrollment) => enrollment.userId === req.user.id && enrollment.courseId === course.id && enrollment.status === 'paid'
+  );
+
+  if (!user || (!paidEnrollment && !user.enrolledCourses.includes(course.id))) {
     return res.status(403).json({ message: 'Enrollment required to access this course.' });
   }
 
@@ -731,6 +770,14 @@ app.post('/api/v1/payments/initialize', requireAuth, async (req, res) => {
       courseId: course._id.toString(),
       paymentReference: reference,
       paymentProvider: 'paystack',
+      status: 'pending',
+      paid: false,
+    });
+  } else {
+    enrollments.push({
+      userId: req.user.id,
+      courseId: course.id,
+      paymentReference: reference,
       status: 'pending',
       paid: false,
     });
@@ -791,6 +838,15 @@ app.post('/api/v1/payments/webhook', async (req, res) => {
 
   if (!user.enrolledCourses.includes(courseId)) {
     user.enrolledCourses.push(courseId);
+  }
+
+  const enrollment = enrollments.find(
+    (item) => item.paymentReference === reference && item.userId === user.id && item.courseId === courseId
+  );
+
+  if (enrollment) {
+    enrollment.status = 'paid';
+    enrollment.paid = true;
   }
 
   return res.json({

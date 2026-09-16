@@ -90,6 +90,7 @@ function App() {
   const [selectedCourseId, setSelectedCourseId] = useState('');
   const [lessonForm, setLessonForm] = useState(initialLessonForm);
   const [editingLessonId, setEditingLessonId] = useState('');
+  const [uploadingFile, setUploadingFile] = useState(false);
   const [adminUsers, setAdminUsers] = useState([]);
   const [status, setStatus] = useState('');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
@@ -213,6 +214,52 @@ function App() {
   const handleLessonChange = (event) => {
     const { name, value, type, checked } = event.target;
     setLessonForm((previous) => ({ ...previous, [name]: type === 'checkbox' ? checked : value }));
+  };
+
+  const uploadToCloudinary = async (file, folder) => {
+    if (!file) return '';
+
+    setUploadingFile(true);
+    try {
+      const signatureResponse = await fetch(`${API_URL}/api/v1/admin/uploads/signature`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ folder }),
+      });
+      const signature = await signatureResponse.json();
+      if (!signatureResponse.ok) throw new Error(signature.message || 'Unable to prepare upload.');
+
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('api_key', signature.apiKey);
+      formData.append('timestamp', signature.timestamp);
+      formData.append('signature', signature.signature);
+      formData.append('folder', signature.folder);
+
+      const uploadResponse = await fetch(`https://api.cloudinary.com/v1_1/${signature.cloudName}/auto/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+      const result = await uploadResponse.json();
+      if (!uploadResponse.ok) throw new Error(result.error?.message || 'Cloudinary upload failed.');
+
+      return result.secure_url;
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  const handleLessonFileUpload = async (event) => {
+    try {
+      const url = await uploadToCloudinary(event.target.files?.[0], `gds-ticketing/courses/${selectedCourseId}`);
+      if (url) setLessonForm((previous) => ({ ...previous, contentUrl: url }));
+      setStatus('Lesson file uploaded successfully. Save the lesson to attach it.');
+    } catch (error) {
+      setStatus(error.message || 'Unable to upload lesson file.');
+    }
   };
 
   const handleLeadSubmit = async (event) => {
@@ -809,7 +856,9 @@ function App() {
         <section className="dashboard-shell">
           <div className="dashboard-header">
             <div>
-              <p className="mini-label">Student dashboard</p>
+              <p className="mini-label">
+                {user.role === 'super_admin' ? 'Owner dashboard' : user.role === 'admin' ? 'Admin dashboard' : 'Student dashboard'}
+              </p>
               <h2>Welcome back, {user.fullName}</h2>
             </div>
             <button type="button" className="secondary-btn" onClick={logout}>Logout</button>
@@ -994,6 +1043,11 @@ function App() {
                     <label>
                       Content URL
                       <input name="contentUrl" type="url" value={lessonForm.contentUrl} onChange={handleLessonChange} placeholder="https://..." />
+                    </label>
+                    <label>
+                      Upload lesson file
+                      <input type="file" accept="video/*,application/pdf,image/*" onChange={handleLessonFileUpload} disabled={uploadingFile} />
+                      <span className="field-hint">{uploadingFile ? 'Uploading to Cloudinary...' : 'Video, PDF, or image'}</span>
                     </label>
                     <label>
                       Duration

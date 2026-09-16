@@ -710,6 +710,11 @@ button {
   resize: vertical;
 }
 
+.field-hint {
+  color: #8da4bf;
+  font-size: 0.75rem;
+}
+
 .course-editor-wide {
   grid-column: 1 / -1;
 }
