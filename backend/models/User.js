@@ -9,6 +9,10 @@ const userSchema = new mongoose.Schema(
     role: { type: String, enum: ['student', 'admin', 'super_admin'], default: 'student' },
     passwordHash: { type: String, required: true },
     enrolledCourses: [{ type: String, default: [] }],
+    completedLessons: [{
+      courseId: { type: String, required: true },
+      lessonIds: [{ type: String, default: [] }],
+    }],
     paymentStatus: { type: Boolean, default: false },
   },
   { timestamps: true }

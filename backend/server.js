@@ -99,8 +99,45 @@ const sanitizeUser = (user) => {
     institution: plainUser.institution,
     role: plainUser.role,
     enrolledCourses: plainUser.enrolledCourses || [],
+    completedLessons: plainUser.completedLessons || [],
     paymentStatus: plainUser.paymentStatus || false,
   };
+};
+
+const normalizeProgressMap = (completedLessons = []) => {
+  const progressMap = {};
+
+  completedLessons.forEach((record) => {
+    const courseId = record?.courseId;
+    if (!courseId) return;
+    progressMap[courseId] = Array.isArray(record.lessonIds) ? [...new Set(record.lessonIds)] : [];
+  });
+
+  return progressMap;
+};
+
+const updateUserProgressForCourse = (user, courseId, lessonId, completed) => {
+  const progressRecords = Array.isArray(user.completedLessons) ? [...user.completedLessons] : [];
+  const existingIndex = progressRecords.findIndex((record) => record.courseId === courseId);
+
+  const nextLessonIds = new Set(existingIndex >= 0 ? progressRecords[existingIndex].lessonIds || [] : []);
+
+  if (completed) {
+    nextLessonIds.add(lessonId);
+  } else {
+    nextLessonIds.delete(lessonId);
+  }
+
+  const nextRecord = { courseId, lessonIds: Array.from(nextLessonIds) };
+
+  if (existingIndex >= 0) {
+    progressRecords[existingIndex] = nextRecord;
+  } else {
+    progressRecords.push(nextRecord);
+  }
+
+  user.completedLessons = progressRecords.filter((record) => record.lessonIds && record.lessonIds.length > 0);
+  return normalizeProgressMap(user.completedLessons);
 };
 
 const findUserByEmail = (email) =>
@@ -210,6 +247,7 @@ app.post('/api/v1/auth/register', async (req, res) => {
     role: 'student',
     passwordHash: await bcrypt.hash(password, 10),
     enrolledCourses: [],
+    completedLessons: [],
     paymentStatus: false,
     createdAt: new Date().toISOString(),
   };
@@ -374,6 +412,52 @@ app.get('/api/v1/auth/me', requireAuth, async (req, res) => {
   }
 
   return res.json({ user: sanitizeUser(user) });
+});
+
+app.get('/api/v1/progress/me', requireAuth, async (req, res) => {
+  if (databaseReady) {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User could not be found.' });
+    }
+
+    return res.json({ progress: normalizeProgressMap(user.completedLessons || []) });
+  }
+
+  const user = findUserById(req.user.id);
+  if (!user) {
+    return res.status(404).json({ message: 'User could not be found.' });
+  }
+
+  return res.json({ progress: normalizeProgressMap(user.completedLessons || []) });
+});
+
+app.patch('/api/v1/progress/:courseId', requireAuth, async (req, res) => {
+  const { lessonId, completed } = req.body || {};
+  const { courseId } = req.params;
+
+  if (!lessonId || !courseId) {
+    return res.status(400).json({ message: 'Both courseId and lessonId are required.' });
+  }
+
+  if (databaseReady) {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User could not be found.' });
+    }
+
+    const progress = updateUserProgressForCourse(user, courseId, lessonId, Boolean(completed));
+    await user.save();
+    return res.json({ progress, message: completed ? 'Lesson marked complete.' : 'Lesson marked incomplete.' });
+  }
+
+  const user = findUserById(req.user.id);
+  if (!user) {
+    return res.status(404).json({ message: 'User could not be found.' });
+  }
+
+  const progress = updateUserProgressForCourse(user, courseId, lessonId, Boolean(completed));
+  return res.json({ progress, message: completed ? 'Lesson marked complete.' : 'Lesson marked incomplete.' });
 });
 
 app.put('/api/v1/auth/profile', requireAuth, async (req, res) => {
@@ -1120,6 +1204,7 @@ const ensureSuperAdmin = async () => {
     email,
     role: 'super_admin',
     passwordHash: await bcrypt.hash(password, 12),
+    completedLessons: [],
   });
 };
 

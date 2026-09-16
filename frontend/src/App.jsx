@@ -77,8 +77,11 @@ const formatMoney = (amount) =>
     maximumFractionDigits: 0,
   }).format(amount || 0);
 
+const getCurrentPath = () => window.location.pathname || '/';
+
 function App() {
   const [view, setView] = useState('landing');
+  const [route, setRoute] = useState(getCurrentPath());
   const [adminSection, setAdminSection] = useState('dashboard');
   const [authMode, setAuthMode] = useState('login');
   const [showPassword, setShowPassword] = useState(false);
@@ -100,8 +103,38 @@ function App() {
   const [adminUsers, setAdminUsers] = useState([]);
   const [status, setStatus] = useState('');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [activeLessonIndex, setActiveLessonIndex] = useState(0);
   const [enrollmentRefreshKey, setEnrollmentRefreshKey] = useState(0);
   const [adminEnrollmentRefreshKey, setAdminEnrollmentRefreshKey] = useState(0);
+  const [studentProgress, setStudentProgress] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('gds_student_progress') || '{}');
+    } catch (error) {
+      return {};
+    }
+  });
+
+  const loadStudentProgress = async () => {
+    if (!token) {
+      setStudentProgress({});
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/api/v1/progress/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.message || 'Unable to load progress.');
+      }
+
+      setStudentProgress(payload.progress || {});
+    } catch (error) {
+      setStudentProgress({});
+    }
+  };
 
   const dashboardMetrics = useMemo(() => {
     if (['admin', 'super_admin'].includes(user?.role)) {
@@ -126,6 +159,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem('gds_user', JSON.stringify(user || null));
   }, [user]);
+
+  useEffect(() => {
+    localStorage.setItem('gds_student_progress', JSON.stringify(studentProgress));
+  }, [studentProgress]);
 
   useEffect(() => {
     const loadCourses = async () => {
@@ -172,6 +209,15 @@ function App() {
   }, [token]);
 
   useEffect(() => {
+    if (!token) {
+      setStudentProgress({});
+      return;
+    }
+
+    loadStudentProgress();
+  }, [token, user?.id]);
+
+  useEffect(() => {
     if (window.location.pathname !== '/payment/callback') return;
 
     const reference = new URLSearchParams(window.location.search).get('reference')
@@ -212,6 +258,12 @@ function App() {
 
     verifyPayment();
   }, [token]);
+
+  useEffect(() => {
+    const handlePopState = () => setRoute(getCurrentPath());
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   useEffect(() => {
     if (!token || !['admin', 'super_admin'].includes(user?.role)) return;
@@ -472,6 +524,39 @@ function App() {
     }
   };
 
+  const toggleLessonCompletion = async (courseKey, lessonId) => {
+    if (!courseKey || !lessonId || !token) return;
+
+    const currentProgress = studentProgress[courseKey] || [];
+    const nextCompleted = !currentProgress.includes(lessonId);
+
+    try {
+      const response = await fetch(`${API_URL}/api/v1/progress/${encodeURIComponent(courseKey)}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ lessonId, completed: nextCompleted }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.message || 'Unable to update lesson progress.');
+      }
+
+      setStudentProgress(payload.progress || { ...studentProgress, [courseKey]: currentProgress });
+      setStatus(nextCompleted ? 'Lesson saved as complete.' : 'Lesson marked as incomplete.');
+    } catch (error) {
+      setStatus(error.message || 'Unable to update lesson progress.');
+    }
+  };
+
+  const isLessonCompleted = (courseKey, lessonId) => {
+    if (!courseKey || !lessonId) return false;
+    return (studentProgress[courseKey] || []).includes(lessonId);
+  };
+
   const handleRoleChange = async (account, role) => {
     try {
       const response = await fetch(`${API_URL}/api/v1/admin/users/${account.id}/role`, {
@@ -677,6 +762,29 @@ function App() {
     setStatus('');
   };
 
+  const navigate = (path) => {
+    if (path === window.location.pathname) return;
+    window.history.pushState({}, '', path);
+    setRoute(getCurrentPath());
+  };
+
+  const routeSegments = route.split('/').filter(Boolean);
+  const isCatalogRoute = route === '/courses';
+  const isCourseDetailRoute = routeSegments[0] === 'courses' && routeSegments.length === 2 && routeSegments[1] !== 'learn';
+  const isCourseLearnRoute = routeSegments[0] === 'courses' && routeSegments.length === 3 && routeSegments[2] === 'learn';
+  const isMyCoursesRoute = route === '/dashboard/my-courses';
+  const isAdminLessonsRoute = routeSegments[0] === 'admin' && routeSegments[1] === 'courses' && routeSegments.length === 4 && routeSegments[3] === 'lessons';
+
+  const selectedCourseSlug = isCourseDetailRoute || isCourseLearnRoute ? routeSegments[1] : '';
+  const selectedCourse = courses.find((course) => course.slug === selectedCourseSlug || course.id === selectedCourseSlug) || adminCourses.find((course) => course.slug === selectedCourseSlug || course.id === selectedCourseSlug) || null;
+  const selectedAdminCourseId = isAdminLessonsRoute ? routeSegments[2] : '';
+  const selectedAdminCourse = adminCourses.find((course) => course.id === selectedAdminCourseId || course.slug === selectedAdminCourseId) || null;
+  const approvedCourses = enrollments.filter((item) => item.status === 'approved');
+
+  useEffect(() => {
+    setActiveLessonIndex(0);
+  }, [selectedCourseSlug, route]);
+
   const displayCourses = courses.length
     ? courses.map((course) => ({
         ...course,
@@ -694,6 +802,319 @@ function App() {
         displayPrice: card.price,
       }));
 
+  const renderCourseCatalogPage = () => (
+    <section className="page-section">
+      <div className="section-heading">
+        <p className="mini-label">Public catalog</p>
+        <h2>Choose your course</h2>
+      </div>
+      <div className="pricing-grid">
+        {(courses.length ? courses : displayCourses).map((course) => (
+          <article key={course.id || course.slug} className="pricing-card">
+            {course.thumbnailUrl && <img className="course-card-image" src={course.thumbnailUrl} alt="" />}
+            <p className="card-name">{course.title}</p>
+            <h3>{course.displayPrice || formatMoney(course.price)}</h3>
+            <p className="card-copy">{course.description}</p>
+            <ul>
+              {(course.lessons || []).slice(0, 3).map((lesson) => (
+                <li key={lesson._id || lesson.id || `${course.id}-${lesson.title}`}>{lesson.title}</li>
+              )) || <li>Structured learning path</li>}
+            </ul>
+            <button type="button" className="secondary-btn full-width" onClick={() => navigate(`/courses/${course.slug || course.id}`)}>
+              View course
+            </button>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+
+  const renderCourseDetailPage = () => {
+    if (!selectedCourse) {
+      return (
+        <section className="page-section">
+          <p className="mini-label">Course detail</p>
+          <h2>Course not found</h2>
+        </section>
+      );
+    }
+
+    return (
+      <section className="page-section">
+        <div className="course-detail-shell">
+          {selectedCourse.thumbnailUrl && <img className="course-detail-image" src={selectedCourse.thumbnailUrl} alt="" />}
+          <div className="course-detail-copy">
+            <p className="mini-label">Course overview</p>
+            <h2>{selectedCourse.title}</h2>
+            <p>{selectedCourse.description}</p>
+            <div className="course-detail-meta">
+              <span>{selectedCourse.duration || '4 weeks'}</span>
+              <span>{selectedCourse.level || 'Beginner'}</span>
+              <span>{formatMoney(selectedCourse.price || 0)}</span>
+            </div>
+            <div className="cta-row">
+              <button type="button" className="primary-btn" onClick={() => handleEnrollment(selectedCourse)}>
+                Enroll now
+              </button>
+              <button type="button" className="secondary-btn" onClick={() => navigate('/courses')}>
+                Back to catalog
+              </button>
+            </div>
+            <div className="learning-outline">
+              <h3>Course structure</h3>
+              <ul>
+                {(selectedCourse.lessons || []).length ? (selectedCourse.lessons || []).slice(0, 6).map((lesson) => (
+                  <li key={lesson._id || lesson.id || `${selectedCourse.id}-${lesson.title}`}>
+                    {lesson.title} {lesson.duration ? `· ${lesson.duration}` : ''}
+                  </li>
+                )) : (
+                  <>
+                    <li>Day 1: Foundations</li>
+                    <li>Day 2: Workflow practice</li>
+                    <li>Day 3: Guided assignments</li>
+                  </>
+                )}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  };
+
+  const renderMyCoursesPage = () => (
+    <section className="page-section">
+      <div className="section-heading">
+        <p className="mini-label">Student portal</p>
+        <h2>My courses</h2>
+      </div>
+      <div className="pricing-grid">
+        {approvedCourses.length ? (
+          approvedCourses.map((enrollment) => {
+            const course = enrollment.course || courses.find((item) => item.id === enrollment.courseId || item.slug === enrollment.courseId) || null;
+            if (!course) return null;
+            return (
+              <article className="pricing-card" key={enrollment.id || enrollment.courseId}>
+                <p className="card-name">{course.title}</p>
+                <h3>{formatMoney(course.price || 0)}</h3>
+                <p className="card-copy">{course.description}</p>
+                <button type="button" className="secondary-btn full-width" onClick={() => navigate(`/courses/${course.slug || course.id}/learn`)}>
+                  Continue learning
+                </button>
+              </article>
+            );
+          })
+        ) : (
+          <div className="dashboard-card">
+            <h3>No approved courses yet</h3>
+            <p>Your approved learning access will appear here after payment confirmation and admin approval.</p>
+            <button type="button" className="primary-btn" onClick={() => navigate('/courses')}>Browse courses</button>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+
+  const renderLearningPage = () => {
+    if (!selectedCourse) {
+      return (
+        <section className="page-section">
+          <p className="mini-label">Learning portal</p>
+          <h2>Course unavailable</h2>
+        </section>
+      );
+    }
+
+    const lessons = (selectedCourse.lessons || [
+      { id: 'day-1', title: 'Day 1: Foundations', duration: '45 mins', type: 'video', contentUrl: '' },
+      { id: 'day-2', title: 'Day 2: Workflow practice', duration: '60 mins', type: 'guide', contentUrl: '' },
+      { id: 'day-3', title: 'Day 3: Guided assignment', duration: '35 mins', type: 'quiz', contentUrl: '' },
+    ]).slice().sort((first, second) => (first.order || 0) - (second.order || 0));
+
+    const activeLesson = lessons[activeLessonIndex] || lessons[0];
+    const activeLessonId = activeLesson?._id || activeLesson?.id || `lesson-${activeLessonIndex}`;
+    const courseProgressKey = selectedCourse.id || selectedCourse.slug;
+    const completedLessons = lessons.filter((lesson) => isLessonCompleted(courseProgressKey, lesson._id || lesson.id || `${selectedCourse.id}-lesson-${lesson.title}`)).length;
+    const completionPercent = lessons.length ? (completedLessons / lessons.length) * 100 : 0;
+    const previousLessonEnabled = activeLessonIndex > 0;
+    const nextLessonEnabled = activeLessonIndex < lessons.length - 1;
+    const currentLessonCompleted = isLessonCompleted(courseProgressKey, activeLessonId);
+
+    return (
+      <section className="page-section learning-page">
+        <aside className="learning-sidebar">
+          <p className="mini-label">Course roadmap</p>
+          <h3>{selectedCourse.title}</h3>
+          <div className="progress-label-row">
+            <span>Progress</span>
+            <strong>{Math.round(completionPercent)}%</strong>
+          </div>
+          <div className="progress-bar"><span style={{ width: `${completionPercent}%` }} /></div>
+          <ul className="module-list">
+            {lessons.map((lesson, index) => {
+              const lessonKey = lesson._id || lesson.id || `${selectedCourse.id}-lesson-${index}`;
+              const isComplete = isLessonCompleted(courseProgressKey, lessonKey);
+              const weekNumber = Math.floor(index / 5) + 1;
+
+              return (
+                <li
+                  key={lessonKey}
+                  className={index === activeLessonIndex ? 'active' : ''}
+                  onClick={() => setActiveLessonIndex(index)}
+                >
+                  <div className="lesson-tag-row">
+                    <strong>Week {weekNumber}</strong>
+                    {isComplete && <span className="complete-chip">Done</span>}
+                  </div>
+                  <span>Day {index + 1}</span>
+                  <span>{lesson.title}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </aside>
+
+        <div className="learning-content">
+          <div className="learning-header">
+            <div>
+              <p className="mini-label">Current lesson</p>
+              <h2>{activeLesson.title}</h2>
+            </div>
+            <button type="button" className="primary-btn" onClick={() => navigate('/dashboard/my-courses')}>Back to my courses</button>
+          </div>
+
+          <div className="lesson-resource-card">
+            <p>{activeLesson.duration || '45 mins'} · {activeLesson.type || 'video'}</p>
+            <h3>Learning material</h3>
+            {activeLesson.type === 'guide' ? (
+              <a href={activeLesson.contentUrl || '#'} target="_blank" rel="noreferrer" className="secondary-btn">Open PDF guide</a>
+            ) : activeLesson.type === 'quiz' ? (
+              <div className="quiz-card">
+                <p>Practice quiz</p>
+                <button type="button" className="secondary-btn">Start quiz</button>
+              </div>
+            ) : (
+              <div className="video-placeholder">
+                <p>Video lesson content will appear here once the lesson file is uploaded.</p>
+                {activeLesson.contentUrl && <a href={activeLesson.contentUrl} target="_blank" rel="noreferrer" className="secondary-btn">Open video</a>}
+              </div>
+            )}
+          </div>
+
+          <div className="learning-actions">
+            <button type="button" className="secondary-btn" disabled={!previousLessonEnabled} onClick={() => setActiveLessonIndex((value) => Math.max(0, value - 1))}>Previous</button>
+            <button
+              type="button"
+              className="primary-btn"
+              onClick={() => toggleLessonCompletion(courseProgressKey, activeLessonId)}
+            >
+              {currentLessonCompleted ? 'Mark incomplete' : 'Mark complete'}
+            </button>
+            <button type="button" className="secondary-btn" disabled={!nextLessonEnabled} onClick={() => setActiveLessonIndex((value) => Math.min(lessons.length - 1, value + 1))}>Next lesson</button>
+          </div>
+        </div>
+      </section>
+    );
+  };
+
+  const renderAdminLessonsPage = () => {
+    if (!selectedAdminCourse) {
+      return (
+        <section className="page-section">
+          <p className="mini-label">Course content</p>
+          <h2>Choose a course to manage</h2>
+        </section>
+      );
+    }
+
+    const lessons = selectedAdminCourse.lessons || [];
+
+    return (
+      <section className="page-section admin-lessons-page">
+        <div className="section-heading admin-header-row">
+          <div>
+            <p className="mini-label">Course content</p>
+            <h2>{selectedAdminCourse.title}</h2>
+          </div>
+          <button type="button" className="secondary-btn" onClick={() => navigate('/admin/catalog')}>Back to catalog</button>
+        </div>
+
+        <div className="admin-lessons-layout">
+          <form className="course-editor" onSubmit={saveLesson}>
+            <label>
+              Lesson title
+              <input name="title" value={lessonForm.title} onChange={handleLessonChange} placeholder="Day 1: Ticketing basics" required />
+            </label>
+            <label>
+              Lesson type
+              <select name="type" value={lessonForm.type} onChange={handleLessonChange}>
+                <option value="video">Video</option>
+                <option value="guide">Guide</option>
+                <option value="quiz">Quiz</option>
+              </select>
+            </label>
+            <label>
+              Content URL
+              <input name="contentUrl" type="url" value={lessonForm.contentUrl} onChange={handleLessonChange} placeholder="https://..." />
+            </label>
+            <label>
+              Upload lesson file
+              <input type="file" accept="video/*,application/pdf,image/*" onChange={handleLessonFileUpload} disabled={uploadingFile} />
+              <span className="field-hint">{uploadingFile ? 'Uploading...' : 'Video, PDF, or image'}</span>
+            </label>
+            <label>
+              Duration
+              <input name="duration" value={lessonForm.duration} onChange={handleLessonChange} placeholder="45 minutes" />
+            </label>
+            <label>
+              Order
+              <input name="order" type="number" min="0" value={lessonForm.order} onChange={handleLessonChange} />
+            </label>
+            <label className="checkbox-label">
+              <input name="isPreview" type="checkbox" checked={lessonForm.isPreview} onChange={handleLessonChange} />
+              Free preview lesson
+            </label>
+            <div className="course-editor-actions">
+              <button type="submit" className="primary-btn">{editingLessonId ? 'Save lesson' : 'Add lesson'}</button>
+              {editingLessonId && <button type="button" className="secondary-btn" onClick={resetLessonForm}>Cancel</button>}
+            </div>
+          </form>
+
+          <div className="lesson-builder-panel">
+            <h3>Day-by-day schedule</h3>
+            {lessons.length ? (
+              <div className="schedule-list">
+                {lessons
+                  .slice()
+                  .sort((first, second) => (first.order || 0) - (second.order || 0))
+                  .map((lesson, index) => {
+                    const weekNumber = Math.floor(index / 5) + 1;
+                    const dayNumber = index + 1;
+
+                    return (
+                      <div className="schedule-item" key={lesson._id || lesson.id || `${selectedAdminCourse.id}-lesson-${index}`}>
+                        <div>
+                          <p className="mini-label">Week {weekNumber} · Day {dayNumber}</p>
+                          <strong>{lesson.title}</strong>
+                          <span>{lesson.type} · {lesson.duration || 'No duration'} · {lesson.isPreview ? 'Preview' : 'Full access'}</span>
+                        </div>
+                        <div className="admin-course-actions">
+                          <button type="button" className="text-btn" onClick={() => editLesson(selectedAdminCourse, lesson)}>Edit</button>
+                          <button type="button" className="text-btn danger-btn" onClick={() => deleteLesson(selectedAdminCourse, lesson)}>Delete</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            ) : (
+              <p className="muted-text">No lessons yet. Add the first day of content for this course.</p>
+            )}
+          </div>
+        </div>
+      </section>
+    );
+  };
+
   return (
     <div className="page-shell">
       <header className="topbar">
@@ -706,12 +1127,12 @@ function App() {
         </div>
 
         <nav className="nav">
-          <a href="#program">Program</a>
-          <a href="#pricing">Pricing</a>
-          <a href="#curriculum">Curriculum</a>
+          <button type="button" className="nav-btn" onClick={() => navigate('/')}>Home</button>
+          <button type="button" className="nav-btn" onClick={() => navigate('/courses')}>Courses</button>
           {user ? (
             <>
               <button type="button" className="nav-btn" onClick={() => setView('dashboard')}>Dashboard</button>
+              <button type="button" className="nav-btn" onClick={() => navigate('/dashboard/my-courses')}>My courses</button>
               <button type="button" className="nav-btn" onClick={logout}>Logout</button>
             </>
           ) : (
@@ -723,7 +1144,13 @@ function App() {
         </nav>
       </header>
 
-      {view === 'landing' && (
+      {isCatalogRoute && renderCourseCatalogPage()}
+      {isCourseDetailRoute && renderCourseDetailPage()}
+      {isMyCoursesRoute && renderMyCoursesPage()}
+      {isCourseLearnRoute && renderLearningPage()}
+      {isAdminLessonsRoute && renderAdminLessonsPage()}
+
+      {!isCatalogRoute && !isCourseDetailRoute && !isMyCoursesRoute && !isCourseLearnRoute && !isAdminLessonsRoute && view === 'landing' && (
         <>
           <main className="hero-section">
             <div className="hero-copy">
@@ -1265,7 +1692,7 @@ function App() {
                     </div>
                     <div className="admin-course-actions">
                       <button type="button" className="text-btn" onClick={() => editCourse(course)}>Edit</button>
-                      <button type="button" className="text-btn" onClick={() => { setSelectedCourseId(course.id); resetLessonForm(); }}>Lessons</button>
+                      <button type="button" className="text-btn" onClick={() => { navigate(`/admin/courses/${course.id}/lessons`); setSelectedCourseId(course.id); resetLessonForm(); }}>Lessons</button>
                       {course.status !== 'archived' && <button type="button" className="text-btn danger-btn" onClick={() => archiveCourse(course)}>Archive</button>}
                     </div>
                   </div>
