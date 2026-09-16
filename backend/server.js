@@ -883,21 +883,29 @@ app.get('/api/v1/payments/verify/:reference', requireAuth, async (req, res) => {
     headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` },
   });
   const payload = await paystackResponse.json();
-  if (!paystackResponse.ok || !payload.status || payload.data?.status !== 'success') {
+  if (!paystackResponse.ok || !payload.status) {
     return res.status(400).json({ message: payload.message || 'Payment has not been confirmed.' });
   }
 
+  const paymentStatus = payload.data?.status === 'success' ? 'paid_pending_approval' : 'failed';
+  const paymentMessage = paymentStatus === 'failed'
+    ? 'Payment failed. You can try checkout again.'
+    : 'Payment verified and awaiting admin approval.';
+
   if (databaseReady) {
-    await Enrollment.updateOne({ paymentReference: req.params.reference, userId: req.user.id }, { $set: { paid: true, status: 'paid_pending_approval' } });
+    await Enrollment.updateOne(
+      { paymentReference: req.params.reference, userId: req.user.id },
+      { $set: { paid: paymentStatus === 'paid_pending_approval', status: paymentStatus } }
+    );
   } else {
     const enrollment = enrollments.find((item) => item.paymentReference === req.params.reference && item.userId === req.user.id);
     if (enrollment) {
-      enrollment.status = 'paid_pending_approval';
-      enrollment.paid = true;
+      enrollment.status = paymentStatus;
+      enrollment.paid = paymentStatus === 'paid_pending_approval';
     }
   }
 
-  return res.json({ reference: req.params.reference, status: 'paid_pending_approval', message: 'Payment verified and awaiting admin approval.' });
+  return res.json({ reference: req.params.reference, status: paymentStatus, message: paymentMessage });
 });
 
 app.get('/api/v1/enrollments/me', requireAuth, async (req, res) => {

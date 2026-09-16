@@ -98,6 +98,8 @@ function App() {
   const [adminUsers, setAdminUsers] = useState([]);
   const [status, setStatus] = useState('');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [enrollmentRefreshKey, setEnrollmentRefreshKey] = useState(0);
+  const [adminEnrollmentRefreshKey, setAdminEnrollmentRefreshKey] = useState(0);
 
   const dashboardMetrics = useMemo(() => {
     if (['admin', 'super_admin'].includes(user?.role)) {
@@ -168,6 +170,46 @@ function App() {
   }, [token]);
 
   useEffect(() => {
+    if (window.location.pathname !== '/payment/callback') return;
+
+    const reference = new URLSearchParams(window.location.search).get('reference')
+      || new URLSearchParams(window.location.search).get('trxref');
+    if (!reference) {
+      setStatus('Payment callback received without a transaction reference.');
+      return;
+    }
+
+    if (!token) {
+      setStatus('Please log in again to confirm the payment status.');
+      setView('auth');
+      return;
+    }
+
+    const verifyPayment = async () => {
+      try {
+        setStatus('Confirming your Paystack payment...');
+        const response = await fetch(`${API_URL}/api/v1/payments/verify/${encodeURIComponent(reference)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.message || 'Unable to confirm payment.');
+
+        setStatus(payload.status === 'failed'
+          ? 'Payment failed. Please try again when you are ready.'
+          : 'Payment successful. Your course is now waiting for admin approval.');
+        setEnrollmentRefreshKey((value) => value + 1);
+        setView('dashboard');
+        window.history.replaceState({}, '', '/');
+      } catch (error) {
+        setStatus(error.message || 'Unable to confirm payment.');
+        setView('dashboard');
+      }
+    };
+
+    verifyPayment();
+  }, [token]);
+
+  useEffect(() => {
     if (!token || !['admin', 'super_admin'].includes(user?.role)) return;
 
     const loadAdminCourses = async () => {
@@ -204,7 +246,7 @@ function App() {
     };
 
     loadEnrollments();
-  }, [token, user?.role]);
+  }, [enrollmentRefreshKey, token, user?.role]);
 
   useEffect(() => {
     if (!token || !['admin', 'super_admin'].includes(user?.role)) return;
@@ -223,7 +265,7 @@ function App() {
     };
 
     loadAdminEnrollments();
-  }, [token, user?.role]);
+  }, [adminEnrollmentRefreshKey, token, user?.role]);
 
   useEffect(() => {
     if (!token || user?.role !== 'super_admin') return;
@@ -402,6 +444,7 @@ function App() {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.message || 'Unable to approve course access.');
       setAdminEnrollments((previous) => previous.filter((item) => item.id !== enrollment.id));
+      setAdminEnrollmentRefreshKey((value) => value + 1);
       setStatus(`Access approved for ${enrollment.student?.fullName || 'the student'}.`);
     } catch (error) {
       setStatus(error.message || 'Unable to approve course access.');
