@@ -978,12 +978,30 @@ button {
 .auth-shell {
   display: grid;
   place-items: center;
+  gap: 14px;
   min-height: 60vh;
+  padding: 12px 0 28px;
+}
+
+.auth-page-intro {
+  width: min(540px, 100%);
+  margin-bottom: 0;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.82), rgba(15, 38, 54, 0.86));
+  border-color: rgba(125, 211, 252, 0.2);
+}
+
+.auth-badge {
+  background: rgba(34, 211, 238, 0.12);
+  color: #bff6ff;
+  border-color: rgba(34, 211, 238, 0.3);
 }
 
 .auth-card {
   width: min(540px, 100%);
   padding: 28px 22px;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.95), rgba(8, 24, 39, 0.9));
+  border: 1px solid rgba(125, 211, 252, 0.25);
+  box-shadow: 0 28px 60px rgba(2, 6, 23, 0.38);
 }
 
 .switch-row {

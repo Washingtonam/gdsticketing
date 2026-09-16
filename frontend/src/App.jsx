@@ -65,6 +65,11 @@ const initialLessonForm = {
   title: '',
   type: 'video',
   contentUrl: '',
+  contentMimeType: '',
+  resourceTitle: '',
+  terminalInstructions: '',
+  week: '1',
+  day: '1',
   duration: '',
   order: '0',
   isPreview: false,
@@ -104,6 +109,9 @@ function App() {
   const [status, setStatus] = useState('');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [activeLessonIndex, setActiveLessonIndex] = useState(0);
+  const [learningLessons, setLearningLessons] = useState([]);
+  const [learningLoading, setLearningLoading] = useState(false);
+  const [learningError, setLearningError] = useState('');
   const [enrollmentRefreshKey, setEnrollmentRefreshKey] = useState(0);
   const [adminEnrollmentRefreshKey, setAdminEnrollmentRefreshKey] = useState(0);
   const [studentProgress, setStudentProgress] = useState(() => {
@@ -249,7 +257,7 @@ function App() {
           ? 'Payment failed. Please try again when you are ready.'
           : payload.status === 'pending_payment'
             ? 'Paystack is still processing the payment. Your course will update when the payment is confirmed.'
-            : 'Payment successful. Your course is now waiting for admin approval.');
+            : 'Payment successful. Your course access is now active.');
         setEnrollmentRefreshKey((value) => value + 1);
         const nextRoute = '/dashboard';
         window.history.replaceState({}, '', nextRoute);
@@ -490,7 +498,7 @@ function App() {
         window.open(result.authorizationUrl, '_blank', 'noopener,noreferrer');
       }
 
-      setStatus(`Payment started for ${course.title}. After Paystack confirms it, an admin will approve your access.`);
+      setStatus(`Payment started for ${course.title}. Your access will activate automatically after Paystack confirms it.`);
       const nextRoute = '/dashboard';
       window.history.pushState({}, '', nextRoute);
       setRoute(nextRoute);
@@ -611,6 +619,11 @@ function App() {
       title: lesson.title || '',
       type: lesson.type || 'video',
       contentUrl: lesson.contentUrl || '',
+      contentMimeType: lesson.contentMimeType || '',
+      resourceTitle: lesson.resourceTitle || '',
+      terminalInstructions: lesson.terminalInstructions || '',
+      week: String(lesson.week ?? 1),
+      day: String(lesson.day ?? 1),
       duration: lesson.duration || '',
       order: String(lesson.order ?? 0),
       isPreview: Boolean(lesson.isPreview),
@@ -636,7 +649,12 @@ function App() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ ...lessonForm, order: Number(lessonForm.order) }),
+        body: JSON.stringify({
+          ...lessonForm,
+          week: Number(lessonForm.week),
+          day: Number(lessonForm.day),
+          order: Number(lessonForm.order),
+        }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.message || 'Unable to save lesson.');
@@ -781,11 +799,26 @@ function App() {
   const navigate = (path) => {
     if (path === window.location.pathname) return;
     window.history.pushState({}, '', path);
-    setRoute(getCurrentPath());
+    const nextPath = getCurrentPath();
+    setRoute(nextPath);
+    if (nextPath === '/') {
+      setAuthMode('login');
+      setView('landing');
+    } else if (nextPath === '/login') {
+      setAuthMode('login');
+      setView('auth');
+    } else if (nextPath === '/register') {
+      setAuthMode('register');
+      setView('auth');
+    } else if (['/dashboard', '/dashboard/my-courses', '/admin', '/admin/payments', '/admin/catalog', '/owner'].includes(nextPath) || nextPath.startsWith('/admin/courses/') || nextPath.startsWith('/courses/')) {
+      setView('dashboard');
+    }
   };
 
   const routeSegments = route.split('/').filter(Boolean);
   const isLandingRoute = route === '/';
+  const isLoginRoute = route === '/login';
+  const isRegisterRoute = route === '/register';
   const isCatalogRoute = route === '/courses';
   const isCourseDetailRoute = routeSegments[0] === 'courses' && routeSegments.length === 2 && routeSegments[1] !== 'learn';
   const isCourseLearnRoute = routeSegments[0] === 'courses' && routeSegments.length === 3 && routeSegments[2] === 'learn';
@@ -808,6 +841,34 @@ function App() {
   useEffect(() => {
     setActiveLessonIndex(0);
   }, [selectedCourseSlug, route]);
+
+  useEffect(() => {
+    if (!isCourseLearnRoute || !selectedCourseSlug || !token) {
+      setLearningLessons([]);
+      setLearningError('');
+      return;
+    }
+
+    const loadLearningLessons = async () => {
+      setLearningLoading(true);
+      setLearningError('');
+      try {
+        const response = await fetch(`${API_URL}/api/v1/courses/${encodeURIComponent(selectedCourseSlug)}/lessons`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.message || 'Unable to load course lessons.');
+        setLearningLessons(payload.lessons || []);
+      } catch (error) {
+        setLearningLessons([]);
+        setLearningError(error.message || 'Unable to load course lessons.');
+      } finally {
+        setLearningLoading(false);
+      }
+    };
+
+    loadLearningLessons();
+  }, [isCourseLearnRoute, selectedCourseSlug, token]);
 
   const displayCourses = courses.length
     ? courses.map((course) => ({
@@ -962,7 +1023,7 @@ function App() {
       );
     }
 
-    const lessons = (selectedCourse.lessons || [
+    const lessons = (learningLessons.length ? learningLessons : selectedCourse.lessons || [
       { id: 'day-1', title: 'Day 1: Foundations', duration: '45 mins', type: 'video', contentUrl: '' },
       { id: 'day-2', title: 'Day 2: Workflow practice', duration: '60 mins', type: 'guide', contentUrl: '' },
       { id: 'day-3', title: 'Day 3: Guided assignment', duration: '35 mins', type: 'quiz', contentUrl: '' },
@@ -986,6 +1047,8 @@ function App() {
           </div>
           <span className="page-intro-badge student-badge">Course journey</span>
         </div>
+        {learningLoading && <p className="form-status">Loading your course lessons...</p>}
+        {learningError && <p className="form-status">{learningError}</p>}
         <div className="learning-page">
           <aside className="learning-sidebar">
           <p className="mini-label">Course roadmap</p>
@@ -1008,10 +1071,10 @@ function App() {
                   onClick={() => setActiveLessonIndex(index)}
                 >
                   <div className="lesson-tag-row">
-                    <strong>Week {weekNumber}</strong>
+                    <strong>Week {lesson.week || weekNumber}</strong>
                     {isComplete && <span className="complete-chip">Done</span>}
                   </div>
-                  <span>Day {index + 1}</span>
+                  <span>Day {lesson.day || index + 1}</span>
                   <span>{lesson.title}</span>
                 </li>
               );
@@ -1032,7 +1095,9 @@ function App() {
             <p>{activeLesson.duration || '45 mins'} · {activeLesson.type || 'video'}</p>
             <h3>Learning material</h3>
             {activeLesson.type === 'guide' ? (
-              <a href={activeLesson.contentUrl || '#'} target="_blank" rel="noreferrer" className="secondary-btn">Open PDF guide</a>
+              activeLesson.contentUrl ? (
+                <a href={activeLesson.contentUrl} target="_blank" rel="noreferrer" className="secondary-btn">Open PDF guide</a>
+              ) : <p className="muted-text">The PDF guide has not been uploaded yet.</p>
             ) : activeLesson.type === 'quiz' ? (
               <div className="quiz-card">
                 <p>Practice quiz</p>
@@ -1040,8 +1105,18 @@ function App() {
               </div>
             ) : (
               <div className="video-placeholder">
-                <p>Video lesson content will appear here once the lesson file is uploaded.</p>
-                {activeLesson.contentUrl && <a href={activeLesson.contentUrl} target="_blank" rel="noreferrer" className="secondary-btn">Open video</a>}
+                {activeLesson.contentUrl ? (
+                  <video controls className="lesson-video" src={activeLesson.contentUrl}>
+                    Your browser does not support video playback.
+                  </video>
+                ) : <p>Video lesson content will appear here once the lesson file is uploaded.</p>}
+              </div>
+            )}
+            {activeLesson.resourceTitle && <p className="field-hint">Resource: {activeLesson.resourceTitle}</p>}
+            {activeLesson.terminalInstructions && (
+              <div className="terminal-instructions">
+                <h4>Practical terminal access</h4>
+                <p>{activeLesson.terminalInstructions}</p>
               </div>
             )}
           </div>
@@ -1062,6 +1137,118 @@ function App() {
       </section>
     );
   };
+
+  const renderAuthPage = (mode) => (
+    <section className="auth-shell">
+      <div className="page-intro auth-page-intro">
+        <div>
+          <p className="mini-label">Student portal</p>
+          <h2>{mode === 'login' ? 'Login' : 'Register'}</h2>
+        </div>
+        <span className="page-intro-badge auth-badge">{mode === 'login' ? 'Account access' : 'New student'}</span>
+      </div>
+      <div className="auth-card">
+        <p className="mini-label">Student portal</p>
+        <h2>{mode === 'login' ? 'Welcome back' : 'Create your account'}</h2>
+
+        <form onSubmit={handleAuthSubmit} className="lead-form auth-form">
+          {mode === 'register' && (
+            <label>
+              Full name
+              <input
+                type="text"
+                name="fullName"
+                value={authForm.fullName}
+                onChange={handleAuthChange}
+                placeholder="Jane Doe"
+                required
+              />
+            </label>
+          )}
+
+          <label>
+            Email address
+            <input
+              type="email"
+              name="email"
+              value={authForm.email}
+              onChange={handleAuthChange}
+              placeholder="jane@example.com"
+              required
+            />
+          </label>
+
+          {mode === 'register' && (
+            <>
+              <label>
+                Phone number
+                <input
+                  type="tel"
+                  name="phone"
+                  value={authForm.phone}
+                  onChange={handleAuthChange}
+                  placeholder="0803 000 0000"
+                />
+              </label>
+              <label>
+                Institution
+                <input
+                  type="text"
+                  name="institution"
+                  value={authForm.institution}
+                  onChange={handleAuthChange}
+                  placeholder="University of Lagos"
+                />
+              </label>
+            </>
+          )}
+
+          <label>
+            Password
+            <span className="password-field">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                name="password"
+                value={authForm.password}
+                onChange={handleAuthChange}
+                placeholder="Enter your password"
+                required
+              />
+              <button
+                type="button"
+                className="password-toggle"
+                onClick={() => setShowPassword((visible) => !visible)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                title={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? 'Hide' : 'Show'}
+              </button>
+            </span>
+          </label>
+
+          <button type="submit" className="primary-btn block-btn">
+            {mode === 'login' ? 'Login to dashboard' : 'Create account'}
+          </button>
+        </form>
+
+        <div className="switch-row">
+          <button
+            type="button"
+            className="text-btn"
+            onClick={() => {
+              const nextMode = mode === 'login' ? 'register' : 'login';
+              setAuthMode(nextMode);
+              navigate(nextMode === 'login' ? '/login' : '/register');
+            }}
+          >
+            {mode === 'login' ? 'Need an account? Register' : 'Already have an account? Login'}
+          </button>
+        </div>
+
+        {status ? <p className="form-status">{status}</p> : null}
+      </div>
+    </section>
+  );
 
   const renderStudentDashboardPage = () => (
     <section className="dashboard-shell student-dashboard-shell">
@@ -1447,9 +1634,21 @@ function App() {
               <input name="contentUrl" type="url" value={lessonForm.contentUrl} onChange={handleLessonChange} placeholder="https://..." />
             </label>
             <label>
+              Resource title
+              <input name="resourceTitle" value={lessonForm.resourceTitle} onChange={handleLessonChange} placeholder="Day 1 cheat sheet" />
+            </label>
+            <label>
               Upload lesson file
               <input type="file" accept="video/*,application/pdf,image/*" onChange={handleLessonFileUpload} disabled={uploadingFile} />
               <span className="field-hint">{uploadingFile ? 'Uploading...' : 'Video, PDF, or image'}</span>
+            </label>
+            <label>
+              Week
+              <input name="week" type="number" min="1" value={lessonForm.week} onChange={handleLessonChange} />
+            </label>
+            <label>
+              Day
+              <input name="day" type="number" min="1" value={lessonForm.day} onChange={handleLessonChange} />
             </label>
             <label>
               Duration
@@ -1462,6 +1661,10 @@ function App() {
             <label className="checkbox-label">
               <input name="isPreview" type="checkbox" checked={lessonForm.isPreview} onChange={handleLessonChange} />
               Free preview lesson
+            </label>
+            <label className="course-editor-wide">
+              Terminal instructions
+              <textarea name="terminalInstructions" value={lessonForm.terminalInstructions} onChange={handleLessonChange} placeholder="Add emulator access steps or practice credentials guidance." />
             </label>
             <div className="course-editor-actions">
               <button type="submit" className="primary-btn">{editingLessonId ? 'Save lesson' : 'Add lesson'}</button>
@@ -1483,7 +1686,7 @@ function App() {
                     return (
                       <div className="schedule-item" key={lesson._id || lesson.id || `${selectedAdminCourse.id}-lesson-${index}`}>
                         <div>
-                          <p className="mini-label">Week {weekNumber} · Day {dayNumber}</p>
+                          <p className="mini-label">Week {lesson.week || weekNumber} · Day {lesson.day || dayNumber}</p>
                           <strong>{lesson.title}</strong>
                           <span>{lesson.type} · {lesson.duration || 'No duration'} · {lesson.isPreview ? 'Preview' : 'Full access'}</span>
                         </div>
@@ -1528,8 +1731,8 @@ function App() {
             </>
           ) : (
             <>
-              <button type="button" className="nav-btn" onClick={() => { setAuthMode('login'); setView('auth'); }}>Login</button>
-              <button type="button" className="nav-btn" onClick={() => { setAuthMode('register'); setView('auth'); }}>Register</button>
+              <button type="button" className={`nav-btn ${isLoginRoute ? 'active' : ''}`} onClick={() => { setAuthMode('login'); navigate('/login'); }}>Login</button>
+              <button type="button" className={`nav-btn ${isRegisterRoute ? 'active' : ''}`} onClick={() => { setAuthMode('register'); navigate('/register'); }}>Register</button>
             </>
           )}
         </nav>
@@ -1546,7 +1749,7 @@ function App() {
       {isOwnerRoute && renderOwnerControlsPage()}
       {isAdminLessonsRoute && renderAdminLessonsPage()}
 
-      {!isCatalogRoute && !isCourseDetailRoute && !isStudentDashboardRoute && !isMyCoursesRoute && !isCourseLearnRoute && !isAdminDashboardRoute && !isAdminPaymentsRoute && !isAdminCatalogRoute && !isOwnerRoute && !isAdminLessonsRoute && view === 'landing' && (
+      {isLandingRoute && (
         <>
           <main className="hero-section">
             <div className="hero-copy">
@@ -1557,7 +1760,7 @@ function App() {
               </p>
 
               <div className="cta-row">
-                <button type="button" className="primary-btn" onClick={() => { setAuthMode('register'); setView('auth'); }}>Reserve my student spot</button>
+                <button type="button" className="primary-btn" onClick={() => { setAuthMode('register'); navigate('/register'); }}>Reserve my student spot</button>
                 <a href="#pricing" className="secondary-btn">View pricing</a>
               </div>
 
@@ -1731,106 +1934,7 @@ function App() {
         </>
       )}
 
-      {view === 'auth' && (
-        <section className="auth-shell">
-          <div className="auth-card">
-            <p className="mini-label">Student portal</p>
-            <h2>{authMode === 'login' ? 'Welcome back' : 'Create your account'}</h2>
-
-            <form onSubmit={handleAuthSubmit} className="lead-form auth-form">
-              {authMode === 'register' && (
-                <label>
-                  Full name
-                  <input
-                    type="text"
-                    name="fullName"
-                    value={authForm.fullName}
-                    onChange={handleAuthChange}
-                    placeholder="Jane Doe"
-                    required
-                  />
-                </label>
-              )}
-
-              <label>
-                Email address
-                <input
-                  type="email"
-                  name="email"
-                  value={authForm.email}
-                  onChange={handleAuthChange}
-                  placeholder="jane@example.com"
-                  required
-                />
-              </label>
-
-              {authMode === 'register' && (
-                <>
-                  <label>
-                    Phone number
-                    <input
-                      type="tel"
-                      name="phone"
-                      value={authForm.phone}
-                      onChange={handleAuthChange}
-                      placeholder="0803 000 0000"
-                    />
-                  </label>
-                  <label>
-                    Institution
-                    <input
-                      type="text"
-                      name="institution"
-                      value={authForm.institution}
-                      onChange={handleAuthChange}
-                      placeholder="University of Lagos"
-                    />
-                  </label>
-                </>
-              )}
-
-              <label>
-                Password
-                <span className="password-field">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    name="password"
-                    value={authForm.password}
-                    onChange={handleAuthChange}
-                    placeholder="Enter your password"
-                    required
-                  />
-                  <button
-                    type="button"
-                    className="password-toggle"
-                    onClick={() => setShowPassword((visible) => !visible)}
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    title={showPassword ? 'Hide password' : 'Show password'}
-                  >
-                    {showPassword ? 'Hide' : 'Show'}
-                  </button>
-                </span>
-              </label>
-
-              <button type="submit" className="primary-btn block-btn">
-                {authMode === 'login' ? 'Login to dashboard' : 'Create account'}
-              </button>
-            </form>
-
-            <div className="switch-row">
-              <button
-                type="button"
-                className="text-btn"
-                onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
-              >
-                {authMode === 'login' ? 'Need an account? Register' : 'Already have an account? Login'}
-              </button>
-            </div>
-
-            {status ? <p className="form-status">{status}</p> : null}
-          </div>
-        </section>
-      )}
+      {(isLoginRoute || isRegisterRoute) && renderAuthPage(isLoginRoute ? 'login' : 'register')}
 
       {view === 'dashboard' && user && user.role === 'student' && isStudentDashboardRoute && renderStudentDashboardPage()}
 
