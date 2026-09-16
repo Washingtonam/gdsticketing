@@ -1,5 +1,5 @@
 :root {
-  font-family: Inter, 'Segoe UI', sans-serif;
+  font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
   line-height: 1.5;
   font-weight: 400;
   color: #e5eefb;
@@ -21,8 +21,9 @@ html {
 body {
   margin: 0;
   background:
-    radial-gradient(circle at top left, rgba(59, 130, 246, 0.18), transparent 30%),
-    linear-gradient(180deg, #071827 0%, #0b1d30 100%);
+    radial-gradient(circle at 12% 5%, rgba(247, 183, 73, 0.16), transparent 24%),
+    radial-gradient(circle at 92% 15%, rgba(34, 211, 238, 0.13), transparent 28%),
+    linear-gradient(180deg, #081b29 0%, #10283a 54%, #f1eee7 54%, #f1eee7 100%);
 }
 
 img {
@@ -46,7 +47,7 @@ button {
 .page-shell {
   width: min(1200px, calc(100% - 32px));
   margin: 0 auto;
-  padding: 28px 0 64px;
+  padding: 28px 0 76px;
 }
 
 .topbar {
@@ -121,10 +122,10 @@ button {
 
 .hero-section {
   display: grid;
-  grid-template-columns: 1.3fr 0.9fr;
-  gap: 44px;
+  grid-template-columns: minmax(0, 0.95fr) minmax(280px, 0.75fr) minmax(300px, 0.7fr);
+  gap: 26px;
   align-items: center;
-  padding: 24px 0 26px;
+  padding: 34px 0 32px;
 }
 
 .pill {
@@ -141,17 +142,96 @@ button {
 
 .hero-copy h1 {
   margin-top: 18px;
-  font-size: clamp(2.5rem, 6vw, 4.6rem);
+  font-size: clamp(2.65rem, 5vw, 4.8rem);
   line-height: 1.02;
-  letter-spacing: -0.06em;
+  letter-spacing: -0.035em;
   color: #f8fbff;
 }
 
 .hero-copy p {
   margin-top: 18px;
   max-width: 650px;
-  font-size: 1.05rem;
+  font-size: 1.08rem;
+  line-height: 1.7;
   color: #cfe1f9;
+}
+
+.hero-visual {
+  position: relative;
+  min-height: 520px;
+  overflow: hidden;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 28px 60px rgba(2, 6, 23, 0.42);
+  isolation: isolate;
+}
+
+.hero-visual::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(180deg, rgba(4, 17, 28, 0.02) 20%, rgba(4, 17, 28, 0.82) 100%);
+}
+
+.hero-visual img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  filter: saturate(0.85) contrast(1.05);
+}
+
+.hero-visual-caption {
+  position: absolute;
+  left: 22px;
+  right: 22px;
+  bottom: 22px;
+  display: grid;
+  gap: 8px;
+  color: #fff;
+}
+
+.caption-kicker,
+.caption-meta {
+  color: #bdeff5;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hero-visual-caption strong {
+  max-width: 280px;
+  font-family: Georgia, serif;
+  font-size: 1.55rem;
+  line-height: 1.15;
+  font-weight: 500;
+}
+
+.hero-stat {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  display: grid;
+  gap: 3px;
+  padding: 12px 14px;
+  background: #f7b749;
+  color: #10283a;
+  border-radius: 12px;
+}
+
+.hero-stat strong {
+  font-family: Georgia, serif;
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+.hero-stat span {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .cta-row {
@@ -175,9 +255,10 @@ button {
 }
 
 .primary-btn {
-  background: linear-gradient(135deg, #22d3ee 0%, #2563eb 100%);
-  color: #fff;
-  box-shadow: 0 10px 30px rgba(37, 99, 235, 0.35);
+  background: #f7b749;
+  color: #10283a;
+  font-weight: 700;
+  box-shadow: 0 10px 30px rgba(247, 183, 73, 0.25);
 }
 
 .secondary-btn {
@@ -279,6 +360,37 @@ button {
   margin-top: 26px;
 }
 
+.trust-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 22px;
+  margin-top: 34px;
+  padding: 28px 0 4px;
+  border-top: 1px solid rgba(125, 211, 252, 0.22);
+}
+
+.trust-strip > div {
+  display: grid;
+  gap: 7px;
+}
+
+.trust-number {
+  color: #f7b749;
+  font-family: Georgia, serif;
+  font-size: 1.4rem;
+}
+
+.trust-strip strong {
+  color: #f8fbff;
+  font-size: 1rem;
+}
+
+.trust-strip p {
+  margin: 0;
+  color: #a9c1d8;
+  font-size: 0.9rem;
+}
+
 .info-card,
 .pricing-card,
 .curriculum-item {
@@ -307,6 +419,11 @@ button {
 .curriculum-section,
 .dashboard-shell {
   margin-top: 64px;
+}
+
+.pricing-section,
+.curriculum-section {
+  position: relative;
 }
 
 .section-heading {
@@ -463,9 +580,243 @@ button {
   font-size: 1.2rem;
 }
 
+.admin-panel {
+  margin-top: 20px;
+  padding: 22px;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(125, 211, 252, 0.28);
+  border-radius: 22px;
+}
+
+.admin-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.admin-panel-heading h3 {
+  margin-top: 8px;
+  color: #f8fbff;
+  font-size: 1.35rem;
+}
+
+.admin-badge,
+.role-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.72rem;
+  text-transform: capitalize;
+}
+
+.admin-badge,
+.role-super_admin {
+  color: #cffafe;
+  background: rgba(34, 211, 238, 0.14);
+}
+
+.role-admin {
+  color: #fde68a;
+  background: rgba(245, 158, 11, 0.14);
+}
+
+.role-student {
+  color: #bbf7d0;
+  background: rgba(34, 197, 94, 0.14);
+}
+
+.admin-panel-copy,
+.muted-text {
+  color: #a9bdd6;
+}
+
+.admin-panel-copy {
+  margin: 14px 0 20px;
+}
+
+.user-table-wrap {
+  overflow-x: auto;
+}
+
+.user-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 620px;
+}
+
+.user-table th,
+.user-table td {
+  padding: 14px 10px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+  text-align: left;
+  color: #dbeafe;
+  font-size: 0.9rem;
+}
+
+.user-table th {
+  color: #7dd3fc;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.7rem;
+}
+
+.user-table td:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.user-table td:first-child span {
+  color: #8da4bf;
+  font-size: 0.82rem;
+}
+
+.user-table select {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: #10243a;
+  color: #f8fbff;
+}
+
+.course-editor {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.course-editor label {
+  display: grid;
+  gap: 7px;
+  color: #dbeafe;
+  font-size: 0.88rem;
+}
+
+.course-editor input,
+.course-editor select,
+.course-editor textarea {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 9px;
+  background: rgba(15, 23, 42, 0.55);
+  color: #f8fbff;
+  padding: 0.72rem 0.8rem;
+}
+
+.course-editor textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.course-editor-wide {
+  grid-column: 1 / -1;
+}
+
+.checkbox-label {
+  display: flex !important;
+  align-items: center;
+  gap: 9px !important;
+  padding-top: 27px;
+}
+
+.checkbox-label input {
+  width: auto;
+}
+
+.course-editor-actions {
+  display: flex;
+  align-items: end;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 20px;
+}
+
+.admin-course-list {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-course-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.admin-course-row > div:first-child {
+  display: grid;
+  gap: 5px;
+}
+
+.admin-course-row span {
+  color: #8da4bf;
+  font-size: 0.82rem;
+}
+
+.admin-course-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.danger-btn {
+  color: #fca5a5;
+}
+
+.lesson-editor {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid rgba(125, 211, 252, 0.2);
+  border-radius: 14px;
+  background: rgba(7, 24, 39, 0.5);
+}
+
+.lesson-editor-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.lesson-editor-heading h4 {
+  margin: 7px 0 0;
+  color: #f8fbff;
+  font-size: 1.1rem;
+}
+
+.lesson-list {
+  display: grid;
+  gap: 8px;
+}
+
+.lesson-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.lesson-row > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.lesson-row span {
+  color: #8da4bf;
+  font-size: 0.82rem;
+  text-transform: capitalize;
+}
+
 @media (max-width: 860px) {
   .hero-section,
   .info-grid,
+  .trust-strip,
   .pricing-grid,
   .curriculum-grid,
   .dashboard-grid,
@@ -474,10 +825,31 @@ button {
   }
 
   .topbar,
-  .dashboard-header {
+  .dashboard-header,
+  .admin-panel-heading,
+  .admin-course-row,
+  .lesson-editor-heading,
+  .lesson-row {
     flex-direction: column;
     align-items: flex-start;
     gap: 18px;
+  }
+
+  .hero-visual {
+    min-height: 380px;
+    width: 100%;
+  }
+
+  .course-editor {
+    grid-template-columns: 1fr;
+  }
+
+  .course-editor-wide {
+    grid-column: auto;
+  }
+
+  .course-editor-actions {
+    justify-content: flex-start;
   }
 }
 

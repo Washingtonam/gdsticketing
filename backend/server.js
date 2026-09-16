@@ -31,7 +31,7 @@ const users = [
     email: 'admin@gdsticketing.com',
     phone: '+2348000000000',
     institution: 'GDS Academy',
-    role: 'admin',
+    role: 'super_admin',
     passwordHash: bcrypt.hashSync('Admin123!', 10),
     enrolledCourses: ['sabre-core'],
     paymentStatus: true,
@@ -48,6 +48,8 @@ const defaultCourses = [
     price: 45000,
     currency: 'NGN',
     level: 'Beginner',
+    status: 'published',
+    featured: false,
     description: 'Learn the fundamentals of GDS ticketing, PNR creation, and fare handling.',
     lessons: [
       { id: 'lesson-1', title: 'Intro to GDS and Sabre workflow', type: 'video' },
@@ -63,6 +65,8 @@ const defaultCourses = [
     price: 75000,
     currency: 'NGN',
     level: 'Advanced',
+    status: 'published',
+    featured: true,
     description: 'A practical career pathway for students who want real booking and support workflows.',
     lessons: [
       { id: 'lesson-4', title: 'Advanced itinerary building', type: 'video' },
@@ -130,8 +134,16 @@ const requireAuth = (req, res, next) => {
 };
 
 const requireAdmin = (req, res, next) => {
-  if (req.user.role !== 'admin') {
+  if (!['admin', 'super_admin'].includes(req.user.role)) {
     return res.status(403).json({ message: 'Admin access required.' });
+  }
+
+  next();
+};
+
+const requireSuperAdmin = (req, res, next) => {
+  if (req.user.role !== 'super_admin') {
+    return res.status(403).json({ message: 'Super admin access required.' });
   }
 
   next();
@@ -247,6 +259,44 @@ app.post('/api/v1/auth/login', async (req, res) => {
     token,
     user: sanitizeUser(user),
   });
+});
+
+app.get('/api/v1/admin/users', requireAuth, requireSuperAdmin, async (req, res) => {
+  if (databaseReady) {
+    const records = await User.find({}).sort({ createdAt: -1 });
+    return res.json({ users: records.map((user) => sanitizeUser(user)) });
+  }
+
+  return res.json({ users: users.map((user) => sanitizeUser(user)) });
+});
+
+app.patch('/api/v1/admin/users/:userId/role', requireAuth, requireSuperAdmin, async (req, res) => {
+  const { role } = req.body || {};
+
+  if (!['student', 'admin'].includes(role)) {
+    return res.status(400).json({ message: 'Role must be student or admin.' });
+  }
+
+  if (databaseReady) {
+    const user = await User.findById(req.params.userId);
+
+    if (!user) {
+      return res.status(404).json({ message: 'User could not be found.' });
+    }
+
+    user.role = role;
+    await user.save();
+    return res.json({ user: sanitizeUser(user) });
+  }
+
+  const user = findUserById(req.params.userId);
+
+  if (!user) {
+    return res.status(404).json({ message: 'User could not be found.' });
+  }
+
+  user.role = role;
+  return res.json({ user: sanitizeUser(user) });
 });
 
 app.get('/api/v1/auth/me', requireAuth, async (req, res) => {
@@ -379,9 +429,187 @@ app.post('/api/v1/leads/trigger-outreach', requireAuth, requireAdmin, (req, res)
   });
 });
 
+const normalizeCourseInput = (input) => ({
+  slug: String(input.slug || input.title || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
+  title: String(input.title || '').trim(),
+  description: String(input.description || '').trim(),
+  duration: String(input.duration || '').trim(),
+  price: Number(input.price),
+  currency: String(input.currency || 'NGN').trim().toUpperCase(),
+  level: String(input.level || 'Beginner').trim(),
+  status: ['draft', 'published', 'archived'].includes(input.status) ? input.status : 'draft',
+  featured: Boolean(input.featured),
+  thumbnailUrl: String(input.thumbnailUrl || '').trim(),
+  ...(Array.isArray(input.lessons) ? { lessons: input.lessons } : {}),
+});
+
+const validateCourseInput = (course) => {
+  if (!course.slug || !course.title || !course.description || !Number.isFinite(course.price) || course.price < 0) {
+    return 'title, description, and a valid non-negative price are required.';
+  }
+
+  return null;
+};
+
+const normalizeLessonInput = (input, fallbackOrder = 0) => ({
+  title: String(input.title || '').trim(),
+  type: ['video', 'guide', 'quiz'].includes(input.type) ? input.type : 'video',
+  contentUrl: String(input.contentUrl || '').trim(),
+  duration: String(input.duration || '').trim(),
+  order: Number.isFinite(Number(input.order)) ? Number(input.order) : fallbackOrder,
+  isPreview: Boolean(input.isPreview),
+});
+
+const validateLessonInput = (lesson) => {
+  if (!lesson.title) return 'A lesson title is required.';
+  return null;
+};
+
+app.get('/api/v1/admin/courses', requireAuth, requireAdmin, async (req, res) => {
+  if (databaseReady) {
+    const records = await Course.find({}).sort({ createdAt: -1 }).lean();
+    return res.json({ courses: records.map((course) => ({ ...course, id: course._id.toString() })) });
+  }
+
+  return res.json({ courses });
+});
+
+app.post('/api/v1/admin/courses', requireAuth, requireAdmin, async (req, res) => {
+  const courseInput = normalizeCourseInput(req.body || {});
+  const validationError = validateCourseInput(courseInput);
+
+  if (validationError) return res.status(400).json({ message: validationError });
+
+  if (databaseReady) {
+    const course = await Course.create({ ...courseInput, lessons: courseInput.lessons || [] });
+    return res.status(201).json({ course: { ...course.toObject(), id: course._id.toString() } });
+  }
+
+  if (courses.some((course) => course.slug === courseInput.slug)) {
+    return res.status(409).json({ message: 'A course with this slug already exists.' });
+  }
+
+  const course = { id: `course-${Date.now()}`, lessons: [], ...courseInput };
+  courses.push(course);
+  return res.status(201).json({ course });
+});
+
+app.put('/api/v1/admin/courses/:courseId', requireAuth, requireAdmin, async (req, res) => {
+  const courseInput = normalizeCourseInput(req.body || {});
+  const validationError = validateCourseInput(courseInput);
+
+  if (validationError) return res.status(400).json({ message: validationError });
+
+  if (databaseReady) {
+    const course = await Course.findByIdAndUpdate(req.params.courseId, courseInput, { new: true, runValidators: true });
+
+    if (!course) return res.status(404).json({ message: 'Course not found.' });
+    return res.json({ course: { ...course.toObject(), id: course._id.toString() } });
+  }
+
+  const course = courses.find((item) => item.id === req.params.courseId);
+  if (!course) return res.status(404).json({ message: 'Course not found.' });
+
+  Object.assign(course, courseInput);
+  return res.json({ course });
+});
+
+app.delete('/api/v1/admin/courses/:courseId', requireAuth, requireAdmin, async (req, res) => {
+  if (databaseReady) {
+    const course = await Course.findByIdAndUpdate(req.params.courseId, { status: 'archived' }, { new: true });
+    if (!course) return res.status(404).json({ message: 'Course not found.' });
+    return res.json({ course: { ...course.toObject(), id: course._id.toString() } });
+  }
+
+  const course = courses.find((item) => item.id === req.params.courseId);
+  if (!course) return res.status(404).json({ message: 'Course not found.' });
+
+  course.status = 'archived';
+  return res.json({ course });
+});
+
+app.post('/api/v1/admin/courses/:courseId/lessons', requireAuth, requireAdmin, async (req, res) => {
+  if (databaseReady) {
+    const course = await Course.findById(req.params.courseId);
+    if (!course) return res.status(404).json({ message: 'Course not found.' });
+
+    const lesson = normalizeLessonInput(req.body || {}, course.lessons.length);
+    const validationError = validateLessonInput(lesson);
+    if (validationError) return res.status(400).json({ message: validationError });
+
+    course.lessons.push(lesson);
+    await course.save();
+    return res.status(201).json({ lesson: course.lessons[course.lessons.length - 1] });
+  }
+
+  const course = courses.find((item) => item.id === req.params.courseId);
+  if (!course) return res.status(404).json({ message: 'Course not found.' });
+
+  const lesson = normalizeLessonInput(req.body || {}, course.lessons.length);
+  const validationError = validateLessonInput(lesson);
+  if (validationError) return res.status(400).json({ message: validationError });
+
+  const storedLesson = { id: `lesson-${Date.now()}`, ...lesson };
+  course.lessons.push(storedLesson);
+  return res.status(201).json({ lesson: storedLesson });
+});
+
+app.put('/api/v1/admin/courses/:courseId/lessons/:lessonId', requireAuth, requireAdmin, async (req, res) => {
+  if (databaseReady) {
+    const course = await Course.findById(req.params.courseId);
+    if (!course) return res.status(404).json({ message: 'Course not found.' });
+
+    const lesson = course.lessons.id(req.params.lessonId);
+    if (!lesson) return res.status(404).json({ message: 'Lesson not found.' });
+
+    const nextLesson = normalizeLessonInput(req.body || {}, lesson.order);
+    const validationError = validateLessonInput(nextLesson);
+    if (validationError) return res.status(400).json({ message: validationError });
+
+    Object.assign(lesson, nextLesson);
+    await course.save();
+    return res.json({ lesson });
+  }
+
+  const course = courses.find((item) => item.id === req.params.courseId);
+  const lesson = course?.lessons.find((item) => item.id === req.params.lessonId);
+  if (!course) return res.status(404).json({ message: 'Course not found.' });
+  if (!lesson) return res.status(404).json({ message: 'Lesson not found.' });
+
+  const nextLesson = normalizeLessonInput(req.body || {}, lesson.order);
+  const validationError = validateLessonInput(nextLesson);
+  if (validationError) return res.status(400).json({ message: validationError });
+
+  Object.assign(lesson, nextLesson);
+  return res.json({ lesson });
+});
+
+app.delete('/api/v1/admin/courses/:courseId/lessons/:lessonId', requireAuth, requireAdmin, async (req, res) => {
+  if (databaseReady) {
+    const course = await Course.findById(req.params.courseId);
+    if (!course) return res.status(404).json({ message: 'Course not found.' });
+
+    const lesson = course.lessons.id(req.params.lessonId);
+    if (!lesson) return res.status(404).json({ message: 'Lesson not found.' });
+
+    lesson.deleteOne();
+    await course.save();
+    return res.json({ message: 'Lesson deleted.' });
+  }
+
+  const course = courses.find((item) => item.id === req.params.courseId);
+  if (!course) return res.status(404).json({ message: 'Course not found.' });
+
+  const lessonIndex = course.lessons.findIndex((item) => item.id === req.params.lessonId);
+  if (lessonIndex === -1) return res.status(404).json({ message: 'Lesson not found.' });
+
+  course.lessons.splice(lessonIndex, 1);
+  return res.json({ message: 'Lesson deleted.' });
+});
+
 app.get('/api/v1/courses', async (req, res) => {
   if (databaseReady) {
-    const records = await Course.find({}).lean();
+    const records = await Course.find({ status: 'published' }).lean();
     const payload = records.map((course) => ({
       id: course._id.toString(),
       slug: course.slug,
@@ -391,18 +619,24 @@ app.get('/api/v1/courses', async (req, res) => {
       price: course.price,
       currency: course.currency,
       level: course.level,
+      status: course.status,
+      featured: course.featured,
+      thumbnailUrl: course.thumbnailUrl,
       lessons: course.lessons,
     }));
 
     return res.json({ courses: payload.length ? payload : defaultCourses });
   }
 
-  return res.json({ courses });
+  return res.json({ courses: courses.filter((course) => course.status === 'published') });
 });
 
 app.get('/api/v1/courses/:courseId', async (req, res) => {
   if (databaseReady) {
-    const course = await Course.findOne({ $or: [{ _id: req.params.courseId }, { slug: req.params.courseId }] }).lean();
+    const course = await Course.findOne({
+      status: 'published',
+      $or: [{ _id: req.params.courseId }, { slug: req.params.courseId }],
+    }).lean();
 
     if (!course) {
       return res.status(404).json({ message: 'Course not found.' });
@@ -423,7 +657,9 @@ app.get('/api/v1/courses/:courseId', async (req, res) => {
     });
   }
 
-  const course = courses.find((item) => item.id === req.params.courseId || item.slug === req.params.courseId);
+  const course = courses.find(
+    (item) => item.status === 'published' && (item.id === req.params.courseId || item.slug === req.params.courseId)
+  );
 
   if (!course) {
     return res.status(404).json({ message: 'Course not found.' });
@@ -599,8 +835,34 @@ app.use((error, req, res, next) => {
   res.status(500).json({ message: 'Internal server error.' });
 });
 
-connectDB().then((connected) => {
+const ensureSuperAdmin = async () => {
+  const email = String(process.env.SUPER_ADMIN_EMAIL || '').trim().toLowerCase();
+  const password = process.env.SUPER_ADMIN_PASSWORD;
+  const fullName = process.env.SUPER_ADMIN_NAME || 'GDS Super Admin';
+
+  if (!databaseReady || !email || !password) return;
+
+  const existingUser = await User.findOne({ email });
+
+  if (existingUser) {
+    if (existingUser.role !== 'super_admin') {
+      existingUser.role = 'super_admin';
+      await existingUser.save();
+    }
+    return;
+  }
+
+  await User.create({
+    fullName,
+    email,
+    role: 'super_admin',
+    passwordHash: await bcrypt.hash(password, 12),
+  });
+};
+
+connectDB().then(async (connected) => {
   databaseReady = connected;
+  await ensureSuperAdmin();
   app.listen(port, () => {
     if (connected) {
       console.log('MongoDB connected successfully.');

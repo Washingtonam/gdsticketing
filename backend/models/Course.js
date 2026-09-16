@@ -6,6 +6,8 @@ const lessonSchema = new mongoose.Schema(
     type: { type: String, enum: ['video', 'guide', 'quiz'], default: 'video' },
     contentUrl: { type: String, default: '' },
     duration: { type: String, default: '' },
+    order: { type: Number, default: 0 },
+    isPreview: { type: Boolean, default: false },
   },
   { _id: true }
 );
@@ -19,6 +21,9 @@ const courseSchema = new mongoose.Schema(
     price: { type: Number, required: true },
     currency: { type: String, default: 'NGN' },
     level: { type: String, default: 'Beginner' },
+    status: { type: String, enum: ['draft', 'published', 'archived'], default: 'draft' },
+    featured: { type: Boolean, default: false },
+    thumbnailUrl: { type: String, default: '' },
     lessons: [lessonSchema],
   },
   { timestamps: true }

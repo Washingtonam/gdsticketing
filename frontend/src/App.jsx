@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import './App.css';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 const pricingCards = [
   {
     name: 'Student Access',
@@ -47,6 +49,26 @@ const initialAuthForm = {
   institution: '',
 };
 
+const initialCourseForm = {
+  title: '',
+  description: '',
+  duration: '4 weeks',
+  price: '45000',
+  currency: 'NGN',
+  level: 'Beginner',
+  status: 'draft',
+  featured: false,
+};
+
+const initialLessonForm = {
+  title: '',
+  type: 'video',
+  contentUrl: '',
+  duration: '',
+  order: '0',
+  isPreview: false,
+};
+
 const formatMoney = (amount) =>
   new Intl.NumberFormat('en-NG', {
     style: 'currency',
@@ -62,6 +84,13 @@ function App() {
   const [leadForm, setLeadForm] = useState(initialLeadForm);
   const [authForm, setAuthForm] = useState(initialAuthForm);
   const [courses, setCourses] = useState([]);
+  const [adminCourses, setAdminCourses] = useState([]);
+  const [courseForm, setCourseForm] = useState(initialCourseForm);
+  const [editingCourseId, setEditingCourseId] = useState('');
+  const [selectedCourseId, setSelectedCourseId] = useState('');
+  const [lessonForm, setLessonForm] = useState(initialLessonForm);
+  const [editingLessonId, setEditingLessonId] = useState('');
+  const [adminUsers, setAdminUsers] = useState([]);
   const [status, setStatus] = useState('');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
 
@@ -85,7 +114,7 @@ function App() {
   useEffect(() => {
     const loadCourses = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/v1/courses');
+        const response = await fetch(`${API_URL}/api/v1/courses`);
         if (!response.ok) {
           throw new Error('Failed to load courses');
         }
@@ -105,7 +134,7 @@ function App() {
 
     const loadMe = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/v1/auth/me', {
+        const response = await fetch(`${API_URL}/api/v1/auth/me`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -126,6 +155,46 @@ function App() {
     loadMe();
   }, [token]);
 
+  useEffect(() => {
+    if (!token || !['admin', 'super_admin'].includes(user?.role)) return;
+
+    const loadAdminCourses = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/v1/admin/courses`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const payload = await response.json();
+
+        if (!response.ok) throw new Error(payload.message || 'Unable to load courses.');
+        setAdminCourses(payload.courses || []);
+      } catch (error) {
+        setStatus(error.message || 'Unable to load courses.');
+      }
+    };
+
+    loadAdminCourses();
+  }, [token, user?.role]);
+
+  useEffect(() => {
+    if (!token || user?.role !== 'super_admin') return;
+
+    const loadAdminUsers = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/v1/admin/users`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const payload = await response.json();
+
+        if (!response.ok) throw new Error(payload.message || 'Unable to load users.');
+        setAdminUsers(payload.users || []);
+      } catch (error) {
+        setStatus(error.message || 'Unable to load users.');
+      }
+    };
+
+    loadAdminUsers();
+  }, [token, user?.role]);
+
   const handleLeadChange = (event) => {
     const { name, value } = event.target;
     setLeadForm((previous) => ({ ...previous, [name]: value }));
@@ -136,11 +205,21 @@ function App() {
     setAuthForm((previous) => ({ ...previous, [name]: value }));
   };
 
+  const handleCourseChange = (event) => {
+    const { name, value, type, checked } = event.target;
+    setCourseForm((previous) => ({ ...previous, [name]: type === 'checkbox' ? checked : value }));
+  };
+
+  const handleLessonChange = (event) => {
+    const { name, value, type, checked } = event.target;
+    setLessonForm((previous) => ({ ...previous, [name]: type === 'checkbox' ? checked : value }));
+  };
+
   const handleLeadSubmit = async (event) => {
     event.preventDefault();
 
     try {
-      const response = await fetch('http://localhost:5000/api/v1/leads/capture', {
+      const response = await fetch(`${API_URL}/api/v1/leads/capture`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -174,7 +253,7 @@ function App() {
       setCheckoutLoading(true);
       setStatus('Preparing your secure checkout...');
 
-      const response = await fetch('http://localhost:5000/api/v1/payments/initialize', {
+      const response = await fetch(`${API_URL}/api/v1/payments/initialize`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -202,6 +281,166 @@ function App() {
     }
   };
 
+  const handleRoleChange = async (account, role) => {
+    try {
+      const response = await fetch(`${API_URL}/api/v1/admin/users/${account.id}/role`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ role }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) throw new Error(payload.message || 'Unable to update role.');
+
+      setAdminUsers((previous) => previous.map((item) => (item.id === account.id ? payload.user : item)));
+      setStatus(`${account.fullName} is now a ${role === 'admin' ? 'portal admin' : 'student'}.`);
+    } catch (error) {
+      setStatus(error.message || 'Unable to update role.');
+    }
+  };
+
+  const editCourse = (course) => {
+    setEditingCourseId(course.id || '');
+    setCourseForm({
+      title: course.title || '',
+      description: course.description || '',
+      duration: course.duration || '',
+      price: String(course.price || ''),
+      currency: course.currency || 'NGN',
+      level: course.level || 'Beginner',
+      status: course.status || 'draft',
+      featured: Boolean(course.featured),
+    });
+  };
+
+  const editLesson = (course, lesson) => {
+    setSelectedCourseId(course.id);
+    setEditingLessonId(lesson._id || lesson.id || '');
+    setLessonForm({
+      title: lesson.title || '',
+      type: lesson.type || 'video',
+      contentUrl: lesson.contentUrl || '',
+      duration: lesson.duration || '',
+      order: String(lesson.order ?? 0),
+      isPreview: Boolean(lesson.isPreview),
+    });
+  };
+
+  const resetLessonForm = () => {
+    setEditingLessonId('');
+    setLessonForm(initialLessonForm);
+  };
+
+  const saveLesson = async (event) => {
+    event.preventDefault();
+    if (!selectedCourseId) return;
+
+    try {
+      const endpoint = editingLessonId
+        ? `${API_URL}/api/v1/admin/courses/${selectedCourseId}/lessons/${editingLessonId}`
+        : `${API_URL}/api/v1/admin/courses/${selectedCourseId}/lessons`;
+      const response = await fetch(endpoint, {
+        method: editingLessonId ? 'PUT' : 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ ...lessonForm, order: Number(lessonForm.order) }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.message || 'Unable to save lesson.');
+
+      setAdminCourses((previous) => previous.map((course) => {
+        if (course.id !== selectedCourseId) return course;
+        const lessons = editingLessonId
+          ? course.lessons.map((lesson) => ((lesson._id || lesson.id) === editingLessonId ? payload.lesson : lesson))
+          : [...(course.lessons || []), payload.lesson];
+        return { ...course, lessons: lessons.sort((first, second) => (first.order || 0) - (second.order || 0)) };
+      }));
+      setStatus('Lesson saved successfully.');
+      resetLessonForm();
+    } catch (error) {
+      setStatus(error.message || 'Unable to save lesson.');
+    }
+  };
+
+  const deleteLesson = async (course, lesson) => {
+    const lessonId = lesson._id || lesson.id;
+
+    try {
+      const response = await fetch(`${API_URL}/api/v1/admin/courses/${course.id}/lessons/${lessonId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.message || 'Unable to delete lesson.');
+
+      setAdminCourses((previous) => previous.map((item) => item.id === course.id
+        ? { ...item, lessons: item.lessons.filter((itemLesson) => (itemLesson._id || itemLesson.id) !== lessonId) }
+        : item));
+      setStatus('Lesson deleted.');
+    } catch (error) {
+      setStatus(error.message || 'Unable to delete lesson.');
+    }
+  };
+
+  const resetCourseForm = () => {
+    setEditingCourseId('');
+    setCourseForm(initialCourseForm);
+  };
+
+  const saveCourse = async (event) => {
+    event.preventDefault();
+
+    try {
+      const endpoint = editingCourseId
+        ? `${API_URL}/api/v1/admin/courses/${editingCourseId}`
+        : `${API_URL}/api/v1/admin/courses`;
+      const response = await fetch(endpoint, {
+        method: editingCourseId ? 'PUT' : 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ ...courseForm, price: Number(courseForm.price) }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) throw new Error(payload.message || 'Unable to save course.');
+
+      setAdminCourses((previous) => editingCourseId
+        ? previous.map((course) => (course.id === editingCourseId ? payload.course : course))
+        : [payload.course, ...previous]);
+      setCourses((previous) => editingCourseId
+        ? previous.map((course) => (course.id === editingCourseId ? payload.course : course))
+        : [...previous, payload.course]);
+      setStatus(`${payload.course.title} saved successfully.`);
+      resetCourseForm();
+    } catch (error) {
+      setStatus(error.message || 'Unable to save course.');
+    }
+  };
+
+  const archiveCourse = async (course) => {
+    try {
+      const response = await fetch(`${API_URL}/api/v1/admin/courses/${course.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.message || 'Unable to archive course.');
+
+      setAdminCourses((previous) => previous.map((item) => (item.id === course.id ? payload.course : item)));
+      setCourses((previous) => previous.filter((item) => item.id !== course.id));
+      setStatus(`${course.title} was archived.`);
+    } catch (error) {
+      setStatus(error.message || 'Unable to archive course.');
+    }
+  };
+
   const handleAuthSubmit = async (event) => {
     event.preventDefault();
 
@@ -217,7 +456,7 @@ function App() {
             institution: authForm.institution,
           };
 
-      const response = await fetch(`http://localhost:5000${endpoint}`, {
+      const response = await fetch(`${API_URL}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -296,10 +535,10 @@ function App() {
         <>
           <main className="hero-section">
             <div className="hero-copy">
-              <span className="pill">Career-ready ticketing skills</span>
-              <h1>Start your GDS journey with practical, agency-style training.</h1>
+              <span className="pill">GDS TICKETING ACADEMY · LAGOS</span>
+              <h1>Learn the systems that move the world.</h1>
               <p>
-                Learn Sabre workflows, PNR creation, fare logic, and ticketing support skills that get students job-ready in an increasingly digital travel ecosystem.
+                Practical Sabre and GDS training for ambitious students building a real career in travel operations, airline ticketing, and agency support.
               </p>
 
               <div className="cta-row">
@@ -312,6 +551,22 @@ function App() {
                   <li key={benefit}>{benefit}</li>
                 ))}
               </ul>
+            </div>
+
+            <div className="hero-visual" aria-label="Students learning in a modern academy">
+              <img
+                src="https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&w=1200&q=85"
+                alt="Modern academy building with students nearby"
+              />
+              <div className="hero-visual-caption">
+                <span className="caption-kicker">A practical learning environment</span>
+                <strong>From classroom confidence to agency capability.</strong>
+                <span className="caption-meta">Structured lessons · Guided practice · Career support</span>
+              </div>
+              <div className="hero-stat">
+                <strong>01</strong>
+                <span>Learn by doing</span>
+              </div>
             </div>
 
             <div className="lead-card" id="lead-form">
@@ -384,6 +639,24 @@ function App() {
               <p>
                 From PNR entry to standard booking journeys, students learn the most relevant processes used in modern travel operations.
               </p>
+            </div>
+          </section>
+
+          <section className="trust-strip" aria-label="Academy standards">
+            <div>
+              <span className="trust-number">01</span>
+              <strong>Industry-led curriculum</strong>
+              <p>Learn the workflows travel teams use every day.</p>
+            </div>
+            <div>
+              <span className="trust-number">02</span>
+              <strong>Guided practice</strong>
+              <p>Build confidence through structured exercises and feedback.</p>
+            </div>
+            <div>
+              <span className="trust-number">03</span>
+              <strong>Clear student access</strong>
+              <p>Pay once, see your enrollment, and learn from your portal.</p>
             </div>
           </section>
 
@@ -577,6 +850,187 @@ function App() {
               </ul>
             </div>
           </div>
+
+          {user.role === 'super_admin' && (
+            <div className="admin-panel">
+              <div className="admin-panel-heading">
+                <div>
+                  <p className="mini-label">Owner controls</p>
+                  <h3>User access</h3>
+                </div>
+                <span className="admin-badge">Super admin</span>
+              </div>
+              <p className="admin-panel-copy">Promote trusted students to portal admins. The super admin account cannot be changed from this screen.</p>
+              <div className="user-table-wrap">
+                <table className="user-table">
+                  <thead>
+                    <tr>
+                      <th>User</th>
+                      <th>Role</th>
+                      <th>Enrollment</th>
+                      <th>Access</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {adminUsers.map((account) => (
+                      <tr key={account.id}>
+                        <td>
+                          <strong>{account.fullName}</strong>
+                          <span>{account.email}</span>
+                        </td>
+                        <td><span className={`role-pill role-${account.role}`}>{account.role.replace('_', ' ')}</span></td>
+                        <td>{account.enrolledCourses?.length || 0} courses</td>
+                        <td>
+                          {account.role === 'super_admin' ? (
+                            <span className="muted-text">Protected</span>
+                          ) : (
+                            <select value={account.role} onChange={(event) => handleRoleChange(account, event.target.value)}>
+                              <option value="student">Student</option>
+                              <option value="admin">Admin</option>
+                            </select>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {['admin', 'super_admin'].includes(user.role) && (
+            <div className="admin-panel">
+              <div className="admin-panel-heading">
+                <div>
+                  <p className="mini-label">Catalog controls</p>
+                  <h3>Courses and pricing</h3>
+                </div>
+                <span className="admin-badge">Editable catalog</span>
+              </div>
+              <p className="admin-panel-copy">Create courses, change pricing, and publish or archive offers without changing application code.</p>
+
+              <form className="course-editor" onSubmit={saveCourse}>
+                <label>
+                  Course title
+                  <input name="title" value={courseForm.title} onChange={handleCourseChange} placeholder="Sabre Core Ticketing" required />
+                </label>
+                <label>
+                  Price
+                  <input name="price" type="number" min="0" value={courseForm.price} onChange={handleCourseChange} required />
+                </label>
+                <label>
+                  Duration
+                  <input name="duration" value={courseForm.duration} onChange={handleCourseChange} placeholder="4 weeks" />
+                </label>
+                <label>
+                  Level
+                  <select name="level" value={courseForm.level} onChange={handleCourseChange}>
+                    <option>Beginner</option>
+                    <option>Intermediate</option>
+                    <option>Advanced</option>
+                  </select>
+                </label>
+                <label className="course-editor-wide">
+                  Description
+                  <textarea name="description" value={courseForm.description} onChange={handleCourseChange} placeholder="Describe the outcome students will get." required />
+                </label>
+                <label>
+                  Visibility
+                  <select name="status" value={courseForm.status} onChange={handleCourseChange}>
+                    <option value="draft">Draft</option>
+                    <option value="published">Published</option>
+                    <option value="archived">Archived</option>
+                  </select>
+                </label>
+                <label className="checkbox-label">
+                  <input name="featured" type="checkbox" checked={courseForm.featured} onChange={handleCourseChange} />
+                  Featured course
+                </label>
+                <div className="course-editor-actions">
+                  <button type="submit" className="primary-btn">{editingCourseId ? 'Save changes' : 'Create course'}</button>
+                  {editingCourseId && <button type="button" className="secondary-btn" onClick={resetCourseForm}>Cancel</button>}
+                </div>
+              </form>
+
+              <div className="admin-course-list">
+                {adminCourses.map((course) => (
+                  <div className="admin-course-row" key={course.id}>
+                    <div>
+                      <strong>{course.title}</strong>
+                      <span>{formatMoney(course.price)} · {course.status || 'draft'} · {course.lessons?.length || 0} lessons</span>
+                    </div>
+                    <div className="admin-course-actions">
+                      <button type="button" className="text-btn" onClick={() => editCourse(course)}>Edit</button>
+                      <button type="button" className="text-btn" onClick={() => { setSelectedCourseId(course.id); resetLessonForm(); }}>Lessons</button>
+                      {course.status !== 'archived' && <button type="button" className="text-btn danger-btn" onClick={() => archiveCourse(course)}>Archive</button>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {selectedCourseId && (
+                <div className="lesson-editor">
+                  <div className="lesson-editor-heading">
+                    <div>
+                      <p className="mini-label">Content manager</p>
+                      <h4>{adminCourses.find((course) => course.id === selectedCourseId)?.title} lessons</h4>
+                    </div>
+                    <button type="button" className="text-btn" onClick={() => { setSelectedCourseId(''); resetLessonForm(); }}>Close</button>
+                  </div>
+
+                  <form className="course-editor" onSubmit={saveLesson}>
+                    <label>
+                      Lesson title
+                      <input name="title" value={lessonForm.title} onChange={handleLessonChange} placeholder="PNR creation and passenger data" required />
+                    </label>
+                    <label>
+                      Lesson type
+                      <select name="type" value={lessonForm.type} onChange={handleLessonChange}>
+                        <option value="video">Video</option>
+                        <option value="guide">Guide</option>
+                        <option value="quiz">Quiz</option>
+                      </select>
+                    </label>
+                    <label>
+                      Content URL
+                      <input name="contentUrl" type="url" value={lessonForm.contentUrl} onChange={handleLessonChange} placeholder="https://..." />
+                    </label>
+                    <label>
+                      Duration
+                      <input name="duration" value={lessonForm.duration} onChange={handleLessonChange} placeholder="12 minutes" />
+                    </label>
+                    <label>
+                      Order
+                      <input name="order" type="number" min="0" value={lessonForm.order} onChange={handleLessonChange} />
+                    </label>
+                    <label className="checkbox-label">
+                      <input name="isPreview" type="checkbox" checked={lessonForm.isPreview} onChange={handleLessonChange} />
+                      Free preview lesson
+                    </label>
+                    <div className="course-editor-actions">
+                      <button type="submit" className="primary-btn">{editingLessonId ? 'Save lesson' : 'Add lesson'}</button>
+                      {editingLessonId && <button type="button" className="secondary-btn" onClick={resetLessonForm}>Cancel</button>}
+                    </div>
+                  </form>
+
+                  <div className="lesson-list">
+                    {(adminCourses.find((course) => course.id === selectedCourseId)?.lessons || []).map((lesson) => (
+                      <div className="lesson-row" key={lesson._id || lesson.id}>
+                        <div>
+                          <strong>{lesson.order + 1}. {lesson.title}</strong>
+                          <span>{lesson.type} {lesson.isPreview ? '· Preview' : ''} {lesson.duration ? `· ${lesson.duration}` : ''}</span>
+                        </div>
+                        <div className="admin-course-actions">
+                          <button type="button" className="text-btn" onClick={() => editLesson(adminCourses.find((course) => course.id === selectedCourseId), lesson)}>Edit</button>
+                          <button type="button" className="text-btn danger-btn" onClick={() => deleteLesson(adminCourses.find((course) => course.id === selectedCourseId), lesson)}>Delete</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </section>
       )}
     </div>
