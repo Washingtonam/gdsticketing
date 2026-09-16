@@ -48,6 +48,15 @@ button {
   width: min(1200px, calc(100% - 32px));
   margin: 0 auto;
   padding: 28px 0 76px;
+  position: relative;
+}
+
+.page-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(125, 211, 252, 0.45), transparent);
 }
 
 .page-section {
@@ -125,6 +134,11 @@ button {
 
 .learning-outline li {
   color: #d9e9ff;
+}
+
+.learning-page-shell {
+  display: grid;
+  gap: 18px;
 }
 
 .learning-page {
@@ -424,6 +438,19 @@ button {
 .nav-btn,
 .text-btn {
   font-size: 0.95rem;
+}
+
+.nav-btn {
+  padding: 8px 12px;
+  border-radius: 999px;
+  transition: all 0.2s ease;
+}
+
+.nav-btn.active {
+  color: #081b29;
+  background: linear-gradient(135deg, #f7b749, #f8d47e);
+  box-shadow: 0 12px 24px rgba(247, 183, 73, 0.18);
+  opacity: 1;
 }
 
 .hero-section {
@@ -755,38 +782,102 @@ button {
   margin-top: 64px;
 }
 
-.admin-sidebar {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin: 24px 0 18px;
-  padding: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: 14px;
-  background: rgba(8, 24, 39, 0.72);
-  overflow-x: auto;
+.student-dashboard-shell {
+  background: linear-gradient(180deg, rgba(19, 59, 85, 0.45), rgba(15, 23, 42, 0.82));
+  border: 1px solid rgba(125, 211, 252, 0.2);
+  border-radius: 28px;
+  padding: 26px;
 }
 
-.admin-sidebar .mini-label {
-  padding: 0 10px;
-  white-space: nowrap;
+.admin-dashboard-shell {
+  background: linear-gradient(180deg, rgba(60, 35, 12, 0.42), rgba(15, 23, 42, 0.82));
+  border: 1px solid rgba(247, 183, 73, 0.22);
+  border-radius: 28px;
+  padding: 26px;
+}
+
+.admin-shell-panel {
+  background: linear-gradient(180deg, rgba(10, 19, 29, 0.88), rgba(15, 23, 42, 1));
+  border: 1px solid rgba(247, 183, 73, 0.22);
+}
+
+.owner-shell-panel {
+  border-color: rgba(34, 211, 238, 0.32);
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.1), 0 20px 45px rgba(34, 211, 238, 0.07);
+}
+
+.admin-lesson-shell {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(10, 31, 47, 0.96));
+  border: 1px solid rgba(125, 211, 252, 0.2);
+  border-radius: 24px;
+  padding: 22px;
+}
+
+.admin-workspace-shell {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 24px;
+  margin-top: 18px;
+}
+
+.admin-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+  padding: 18px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(8, 24, 39, 0.82), rgba(15, 23, 42, 0.96));
+  min-height: 420px;
+}
+
+.admin-sidebar-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 8px 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  margin-bottom: 8px;
+}
+
+.admin-side-label {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  border-radius: 999px;
+  background: rgba(247, 183, 73, 0.12);
+  color: #f7d58a;
+  border: 1px solid rgba(247, 183, 73, 0.2);
+  padding: 6px 10px;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .admin-sidebar button {
-  padding: 10px 13px;
-  border-radius: 9px;
-  color: #a9bdd6;
-  background: transparent;
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 10px;
+  color: #dbeafe;
+  background: rgba(15, 23, 42, 0.4);
   cursor: pointer;
-  white-space: nowrap;
-  font-size: 0.84rem;
+  font-size: 0.9rem;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
 }
 
 .admin-sidebar button:hover,
 .admin-sidebar button.active {
   color: #10283a;
-  background: #f7b749;
+  background: linear-gradient(135deg, #f7b749, #f8d47e);
+  border-color: rgba(247, 183, 73, 0.5);
   font-weight: 700;
+}
+
+.admin-page-content {
+  min-width: 0;
 }
 
 .pricing-section,
@@ -904,6 +995,70 @@ button {
   background: transparent;
   text-decoration: underline;
   padding: 0;
+}
+
+.page-intro {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+  padding: 18px 20px;
+  border-radius: 20px;
+  background: rgba(8, 24, 39, 0.52);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.page-intro h2 {
+  margin-top: 6px;
+  color: #f8fbff;
+  font-size: clamp(1.7rem, 2.6vw, 2.5rem);
+}
+
+.page-intro-badge {
+  background: rgba(125, 211, 252, 0.12);
+  color: #cffafe;
+  border: 1px solid rgba(125, 211, 252, 0.2);
+}
+
+.page-intro-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.student-badge {
+  background: rgba(34, 197, 94, 0.14);
+  color: #bbf7d0;
+  border: 1px solid rgba(34, 197, 94, 0.25);
+}
+
+.admin-badge-pill {
+  background: rgba(247, 183, 73, 0.12);
+  color: #f7d58a;
+  border: 1px solid rgba(247, 183, 73, 0.25);
+}
+
+.owner-badge-pill {
+  background: rgba(34, 211, 238, 0.12);
+  color: #bff6ff;
+  border: 1px solid rgba(34, 211, 238, 0.3);
+}
+
+.admin-route-intro {
+  background: rgba(18, 26, 37, 0.65);
+  border-color: rgba(247, 183, 73, 0.2);
+}
+
+.owner-route-intro {
+  background: rgba(9, 35, 48, 0.62);
+  border-color: rgba(34, 211, 238, 0.3);
 }
 
 .dashboard-header {
@@ -1227,6 +1382,14 @@ button {
     flex-direction: column;
     align-items: flex-start;
     gap: 18px;
+  }
+
+  .admin-workspace-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-sidebar {
+    min-height: auto;
   }
 
   .hero-visual {

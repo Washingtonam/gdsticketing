@@ -197,6 +197,9 @@ function App() {
 
         const payload = await response.json();
         setUser(payload.user);
+        const nextRoute = payload.user?.role === 'student' ? '/dashboard' : '/admin';
+        window.history.pushState({}, '', nextRoute);
+        setRoute(nextRoute);
         setView('dashboard');
       } catch (error) {
         setToken('');
@@ -248,10 +251,15 @@ function App() {
             ? 'Paystack is still processing the payment. Your course will update when the payment is confirmed.'
             : 'Payment successful. Your course is now waiting for admin approval.');
         setEnrollmentRefreshKey((value) => value + 1);
+        const nextRoute = '/dashboard';
+        window.history.replaceState({}, '', nextRoute);
+        setRoute(nextRoute);
         setView('dashboard');
-        window.history.replaceState({}, '', '/');
       } catch (error) {
         setStatus(error.message || 'Unable to confirm payment.');
+        const nextRoute = '/dashboard';
+        window.history.replaceState({}, '', nextRoute);
+        setRoute(nextRoute);
         setView('dashboard');
       }
     };
@@ -483,6 +491,9 @@ function App() {
       }
 
       setStatus(`Payment started for ${course.title}. After Paystack confirms it, an admin will approve your access.`);
+      const nextRoute = '/dashboard';
+      window.history.pushState({}, '', nextRoute);
+      setRoute(nextRoute);
       setView('dashboard');
     } catch (error) {
       setStatus(error.message || 'Unable to start enrollment checkout.');
@@ -747,6 +758,9 @@ function App() {
 
       setToken(result.token);
       setUser(result.user);
+      const nextRoute = result.user?.role === 'student' ? '/dashboard' : '/admin';
+      window.history.pushState({}, '', nextRoute);
+      setRoute(nextRoute);
       setView('dashboard');
       setStatus('');
       setAuthForm(initialAuthForm);
@@ -758,6 +772,8 @@ function App() {
   const logout = () => {
     setToken('');
     setUser(null);
+    window.history.pushState({}, '', '/');
+    setRoute('/');
     setView('landing');
     setStatus('');
   };
@@ -769,11 +785,19 @@ function App() {
   };
 
   const routeSegments = route.split('/').filter(Boolean);
+  const isLandingRoute = route === '/';
   const isCatalogRoute = route === '/courses';
   const isCourseDetailRoute = routeSegments[0] === 'courses' && routeSegments.length === 2 && routeSegments[1] !== 'learn';
   const isCourseLearnRoute = routeSegments[0] === 'courses' && routeSegments.length === 3 && routeSegments[2] === 'learn';
+  const isStudentDashboardRoute = route === '/dashboard';
   const isMyCoursesRoute = route === '/dashboard/my-courses';
+  const isAdminDashboardRoute = route === '/admin';
+  const isAdminPaymentsRoute = route === '/admin/payments';
+  const isAdminCatalogRoute = route === '/admin/catalog';
+  const isOwnerRoute = route === '/owner';
   const isAdminLessonsRoute = routeSegments[0] === 'admin' && routeSegments[1] === 'courses' && routeSegments.length === 4 && routeSegments[3] === 'lessons';
+  const isStudentPortalActive = isStudentDashboardRoute || isMyCoursesRoute || isCourseLearnRoute;
+  const isAdminPortalActive = isAdminDashboardRoute || isAdminPaymentsRoute || isAdminCatalogRoute || isOwnerRoute || isAdminLessonsRoute;
 
   const selectedCourseSlug = isCourseDetailRoute || isCourseLearnRoute ? routeSegments[1] : '';
   const selectedCourse = courses.find((course) => course.slug === selectedCourseSlug || course.id === selectedCourseSlug) || adminCourses.find((course) => course.slug === selectedCourseSlug || course.id === selectedCourseSlug) || null;
@@ -804,9 +828,12 @@ function App() {
 
   const renderCourseCatalogPage = () => (
     <section className="page-section">
-      <div className="section-heading">
-        <p className="mini-label">Public catalog</p>
-        <h2>Choose your course</h2>
+      <div className="page-intro">
+        <div>
+          <p className="mini-label">Public catalog</p>
+          <h2>Choose your course</h2>
+        </div>
+        <span className="page-intro-badge student-badge">Public view</span>
       </div>
       <div className="pricing-grid">
         {(courses.length ? courses : displayCourses).map((course) => (
@@ -841,6 +868,13 @@ function App() {
 
     return (
       <section className="page-section">
+        <div className="page-intro">
+          <div>
+            <p className="mini-label">Course overview</p>
+            <h2>{selectedCourse.title}</h2>
+          </div>
+          <span className="page-intro-badge">Course detail</span>
+        </div>
         <div className="course-detail-shell">
           {selectedCourse.thumbnailUrl && <img className="course-detail-image" src={selectedCourse.thumbnailUrl} alt="" />}
           <div className="course-detail-copy">
@@ -884,9 +918,12 @@ function App() {
 
   const renderMyCoursesPage = () => (
     <section className="page-section">
-      <div className="section-heading">
-        <p className="mini-label">Student portal</p>
-        <h2>My courses</h2>
+      <div className="page-intro">
+        <div>
+          <p className="mini-label">Student portal</p>
+          <h2>My courses</h2>
+        </div>
+        <span className="page-intro-badge student-badge">Learning access</span>
       </div>
       <div className="pricing-grid">
         {approvedCourses.length ? (
@@ -941,8 +978,16 @@ function App() {
     const currentLessonCompleted = isLessonCompleted(courseProgressKey, activeLessonId);
 
     return (
-      <section className="page-section learning-page">
-        <aside className="learning-sidebar">
+      <section className="page-section learning-page-shell">
+        <div className="page-intro">
+          <div>
+            <p className="mini-label">Learning portal</p>
+            <h2>{selectedCourse.title}</h2>
+          </div>
+          <span className="page-intro-badge student-badge">Course journey</span>
+        </div>
+        <div className="learning-page">
+          <aside className="learning-sidebar">
           <p className="mini-label">Course roadmap</p>
           <h3>{selectedCourse.title}</h3>
           <div className="progress-label-row">
@@ -974,16 +1019,16 @@ function App() {
           </ul>
         </aside>
 
-        <div className="learning-content">
-          <div className="learning-header">
-            <div>
-              <p className="mini-label">Current lesson</p>
-              <h2>{activeLesson.title}</h2>
+          <div className="learning-content">
+            <div className="learning-header">
+              <div>
+                <p className="mini-label">Current lesson</p>
+                <h2>{activeLesson.title}</h2>
+              </div>
+              <button type="button" className="primary-btn" onClick={() => navigate('/dashboard/my-courses')}>Back to my courses</button>
             </div>
-            <button type="button" className="primary-btn" onClick={() => navigate('/dashboard/my-courses')}>Back to my courses</button>
-          </div>
 
-          <div className="lesson-resource-card">
+            <div className="lesson-resource-card">
             <p>{activeLesson.duration || '45 mins'} · {activeLesson.type || 'video'}</p>
             <h3>Learning material</h3>
             {activeLesson.type === 'guide' ? (
@@ -1001,21 +1046,358 @@ function App() {
             )}
           </div>
 
-          <div className="learning-actions">
-            <button type="button" className="secondary-btn" disabled={!previousLessonEnabled} onClick={() => setActiveLessonIndex((value) => Math.max(0, value - 1))}>Previous</button>
-            <button
-              type="button"
-              className="primary-btn"
-              onClick={() => toggleLessonCompletion(courseProgressKey, activeLessonId)}
-            >
-              {currentLessonCompleted ? 'Mark incomplete' : 'Mark complete'}
-            </button>
-            <button type="button" className="secondary-btn" disabled={!nextLessonEnabled} onClick={() => setActiveLessonIndex((value) => Math.min(lessons.length - 1, value + 1))}>Next lesson</button>
+            <div className="learning-actions">
+              <button type="button" className="secondary-btn" disabled={!previousLessonEnabled} onClick={() => setActiveLessonIndex((value) => Math.max(0, value - 1))}>Previous</button>
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={() => toggleLessonCompletion(courseProgressKey, activeLessonId)}
+              >
+                {currentLessonCompleted ? 'Mark incomplete' : 'Mark complete'}
+              </button>
+              <button type="button" className="secondary-btn" disabled={!nextLessonEnabled} onClick={() => setActiveLessonIndex((value) => Math.min(lessons.length - 1, value + 1))}>Next lesson</button>
+            </div>
           </div>
         </div>
       </section>
     );
   };
+
+  const renderStudentDashboardPage = () => (
+    <section className="dashboard-shell student-dashboard-shell">
+      <div className="page-intro">
+        <div>
+          <p className="mini-label">Student workspace</p>
+          <h2>Learning dashboard</h2>
+        </div>
+        <span className="page-intro-badge student-badge">Access portal</span>
+      </div>
+      <div className="dashboard-header">
+        <div>
+          <p className="mini-label">Student dashboard</p>
+          <h2>Welcome back, {user?.fullName}</h2>
+        </div>
+        <button type="button" className="secondary-btn" onClick={logout}>Logout</button>
+      </div>
+
+      <div className="metrics-grid">
+        {dashboardMetrics.map((metric) => (
+          <div key={metric.label} className="metric-card">
+            <p>{metric.label}</p>
+            <h3>{metric.value}</h3>
+          </div>
+        ))}
+      </div>
+
+      <div className="dashboard-card">
+        <h3>Available courses</h3>
+        <div className="pricing-grid">
+          {courses.map((course) => {
+            const enrollment = enrollments.find((item) => item.courseId === course.id || item.course?.id === course.id);
+            const isApproved = enrollment?.status === 'approved';
+            const isRetryable = enrollment?.status === 'failed';
+            const buttonLabel = isApproved
+              ? 'Access approved'
+              : enrollment?.status === 'paid_pending_approval'
+                ? 'Awaiting approval'
+                : enrollment?.status === 'pending_payment'
+                  ? 'Payment pending'
+                  : isRetryable
+                    ? 'Retry payment'
+                    : 'Pay with Paystack';
+
+            return (
+              <article className="pricing-card" key={course.id || course.slug}>
+                <p className="card-name">{course.title}</p>
+                <h3>{formatMoney(course.price)}</h3>
+                <p className="card-copy">{course.description}</p>
+                <button
+                  type="button"
+                  className="secondary-btn full-width"
+                  onClick={() => handleEnrollment(course)}
+                  disabled={(Boolean(enrollment) && !isRetryable) || checkoutLoading}
+                >
+                  {checkoutLoading && !enrollment ? 'Preparing checkout...' : buttonLabel}
+                </button>
+              </article>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="dashboard-grid">
+        <div className="dashboard-card">
+          <h3>Enrollment status</h3>
+          <ul>
+            <li>Course access: {enrollments.some((item) => item.status === 'approved') ? 'Approved' : 'Awaiting payment or approval'}</li>
+            <li>Institution: {user?.institution || 'Not provided'}</li>
+            <li>Phone: {user?.phone || 'Not provided'}</li>
+            <li>Active enrollments: {enrollments.filter((item) => item.status === 'approved').length}</li>
+          </ul>
+        </div>
+
+        <div className="dashboard-card">
+          <h3>Learning path</h3>
+          <ul>
+            {user?.enrolledCourses?.length ? (
+              user.enrolledCourses.map((courseId) => <li key={courseId}>{courseId}</li>)
+            ) : (
+              <>
+                <li>Sabre command structures</li>
+                <li>PNR creation and data handling</li>
+                <li>Ticket issuance and fare checks</li>
+              </>
+            )}
+          </ul>
+        </div>
+      </div>
+    </section>
+  );
+
+  const renderAdminDashboardPage = () => (
+    <section className="dashboard-shell admin-dashboard-shell">
+      <div className="page-intro admin-intro">
+        <div>
+          <p className="mini-label">Admin workspace</p>
+          <h2>{user?.role === 'super_admin' ? 'Owner dashboard' : 'Admin dashboard'}</h2>
+        </div>
+        <span className="page-intro-badge admin-badge-pill">{user?.role === 'super_admin' ? 'Owner access' : 'Admin access'}</span>
+      </div>
+      <div className="dashboard-header">
+        <div>
+          <p className="mini-label">{user?.role === 'super_admin' ? 'Owner dashboard' : 'Admin dashboard'}</p>
+          <h2>Welcome back, {user?.fullName}</h2>
+        </div>
+        <button type="button" className="secondary-btn" onClick={logout}>Logout</button>
+      </div>
+
+      <div className="metrics-grid">
+        {dashboardMetrics.map((metric) => (
+          <div key={metric.label} className="metric-card">
+            <p>{metric.label}</p>
+            <h3>{metric.value}</h3>
+          </div>
+        ))}
+      </div>
+
+      <div className="admin-panel">
+        <div className="admin-panel-heading">
+          <div>
+            <p className="mini-label">Workspace</p>
+            <h3>Operations overview</h3>
+          </div>
+          <span className="admin-badge">{user?.role === 'super_admin' ? 'Owner access' : 'Admin access'}</span>
+        </div>
+        <p className="admin-panel-copy">Open a dedicated page for payment review, catalog control, or owner tools from the admin navigation.</p>
+        <div className="dashboard-grid">
+          <div className="dashboard-card">
+            <h3>Quick actions</h3>
+            <ul>
+              <li><button type="button" className="text-btn" onClick={() => navigate('/admin/payments')}>Review payments</button></li>
+              <li><button type="button" className="text-btn" onClick={() => navigate('/admin/catalog')}>Manage catalog</button></li>
+              {user?.role === 'super_admin' && <li><button type="button" className="text-btn" onClick={() => navigate('/owner')}>Owner controls</button></li>}
+            </ul>
+          </div>
+          <div className="dashboard-card">
+            <h3>Latest status</h3>
+            <ul>
+              <li>Courses in management: {adminCourses.length}</li>
+              <li>Payments awaiting review: {adminEnrollments.length}</li>
+              <li>Role: {user?.role === 'super_admin' ? 'Owner' : 'Admin'}</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+
+  const renderAdminPaymentsPage = () => (
+    <section className="admin-panel admin-shell-panel">
+      <div className="page-intro admin-route-intro">
+        <div>
+          <p className="mini-label">Admin workspace</p>
+          <h2>Payment review</h2>
+        </div>
+        <span className="page-intro-badge admin-badge-pill">Transactions</span>
+      </div>
+      <div className="admin-panel-heading">
+        <div>
+          <p className="mini-label">Payment review</p>
+          <h3>Course access approvals</h3>
+        </div>
+        <span className="admin-badge">{adminEnrollments.length} pending</span>
+      </div>
+      <p className="admin-panel-copy">Approve access only after the Paystack payment appears here as confirmed.</p>
+      <div className="user-table-wrap">
+        <table className="user-table">
+          <thead>
+            <tr><th>Student</th><th>Course</th><th>Amount</th><th>Reference</th><th>Action</th></tr>
+          </thead>
+          <tbody>
+            {adminEnrollments.length ? adminEnrollments.map((enrollment) => (
+              <tr key={enrollment.id}>
+                <td><strong>{enrollment.student?.fullName || 'Unknown student'}</strong><span>{enrollment.student?.email || ''}</span></td>
+                <td>{enrollment.course?.title || 'Unknown course'}</td>
+                <td>{formatMoney(enrollment.course?.price)}</td>
+                <td>{enrollment.paymentReference}</td>
+                <td><button type="button" className="primary-btn" onClick={() => approveEnrollment(enrollment)}>Approve access</button></td>
+              </tr>
+            )) : (
+              <tr><td colSpan="5" className="muted-text">No paid enrollments are waiting for approval.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+
+  const renderAdminCatalogPage = () => (
+    <section className="admin-panel admin-shell-panel">
+      <div className="page-intro admin-route-intro">
+        <div>
+          <p className="mini-label">Admin workspace</p>
+          <h2>Catalog controls</h2>
+        </div>
+        <span className="page-intro-badge admin-badge-pill">Course library</span>
+      </div>
+      <div className="admin-panel-heading">
+        <div>
+          <p className="mini-label">Catalog controls</p>
+          <h3>Courses and pricing</h3>
+        </div>
+        <span className="admin-badge">Editable catalog</span>
+      </div>
+      <p className="admin-panel-copy">Create courses, change pricing, and publish or archive offers without changing application code.</p>
+
+      <form className="course-editor" onSubmit={saveCourse}>
+        <label>
+          Course title
+          <input name="title" value={courseForm.title} onChange={handleCourseChange} placeholder="Sabre Core Ticketing" required />
+        </label>
+        <label>
+          Price
+          <input name="price" type="number" min="0" value={courseForm.price} onChange={handleCourseChange} required />
+        </label>
+        <label>
+          Duration
+          <input name="duration" value={courseForm.duration} onChange={handleCourseChange} placeholder="4 weeks" />
+        </label>
+        <label>
+          Level
+          <select name="level" value={courseForm.level} onChange={handleCourseChange}>
+            <option>Beginner</option>
+            <option>Intermediate</option>
+            <option>Advanced</option>
+          </select>
+        </label>
+        <label>
+          Course thumbnail
+          <input type="file" accept="image/*" onChange={handleThumbnailUpload} disabled={uploadingThumbnail} />
+          <span className="field-hint">{uploadingThumbnail ? 'Uploading to Cloudinary...' : courseForm.thumbnailUrl ? 'Thumbnail ready to save' : 'JPG, PNG, or WebP'}</span>
+        </label>
+        <label className="course-editor-wide">
+          Description
+          <textarea name="description" value={courseForm.description} onChange={handleCourseChange} placeholder="Describe the outcome students will get." required />
+        </label>
+        <label>
+          Visibility
+          <select name="status" value={courseForm.status} onChange={handleCourseChange}>
+            <option value="draft">Draft</option>
+            <option value="published">Published</option>
+            <option value="paused">Paused</option>
+            <option value="archived">Archived</option>
+          </select>
+        </label>
+        <label className="checkbox-label">
+          <input name="featured" type="checkbox" checked={courseForm.featured} onChange={handleCourseChange} />
+          Featured course
+        </label>
+        <div className="course-editor-actions">
+          <button type="submit" className="primary-btn">{editingCourseId ? 'Save changes' : 'Create course'}</button>
+          {editingCourseId && <button type="button" className="secondary-btn" onClick={resetCourseForm}>Cancel</button>}
+        </div>
+      </form>
+
+      <div className="admin-course-list">
+        {adminCourses.map((course) => (
+          <div key={course.id || course.slug} className="admin-course-item">
+            <div>
+              <p className="mini-label">{course.level || 'Course'}</p>
+              <h4>{course.title}</h4>
+              <span>{course.status || 'draft'}</span>
+            </div>
+            <div className="admin-course-actions">
+              <button type="button" className="text-btn" onClick={() => editCourse(course)}>Edit</button>
+              <button type="button" className="text-btn" onClick={() => navigate(`/admin/courses/${course.id || course.slug}/lessons`)}>Lessons</button>
+              <button type="button" className="text-btn danger-btn" onClick={() => archiveCourse(course)}>Archive</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+
+  const renderOwnerControlsPage = () => (
+    <section className="admin-panel admin-shell-panel owner-shell-panel">
+      <div className="page-intro admin-route-intro owner-route-intro">
+        <div>
+          <p className="mini-label">Owner workspace</p>
+          <h2>User access</h2>
+        </div>
+        <span className="page-intro-badge owner-badge-pill">Super admin</span>
+      </div>
+      <div className="admin-panel-heading">
+        <div>
+          <p className="mini-label">Owner controls</p>
+          <h3>User access</h3>
+        </div>
+        <span className="admin-badge">Super admin</span>
+      </div>
+      <p className="admin-panel-copy">Promote trusted students to portal admins. The super admin account cannot be changed from this screen.</p>
+      <div className="user-table-wrap">
+        <table className="user-table">
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Role</th>
+              <th>Enrollment</th>
+              <th>Access</th>
+              <th>Manage</th>
+            </tr>
+          </thead>
+          <tbody>
+            {adminUsers.map((account) => (
+              <tr key={account.id}>
+                <td>
+                  <strong>{account.fullName}</strong>
+                  <span>{account.email}</span>
+                </td>
+                <td><span className={`role-pill role-${account.role}`}>{account.role.replace('_', ' ')}</span></td>
+                <td>{account.enrolledCourses?.length || 0} courses</td>
+                <td>
+                  {account.role === 'super_admin' ? (
+                    <span className="muted-text">Protected</span>
+                  ) : (
+                    <select value={account.role} onChange={(event) => handleRoleChange(account, event.target.value)}>
+                      <option value="student">Student</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  )}
+                </td>
+                <td>
+                  {account.role === 'super_admin' ? (
+                    <span className="muted-text">Protected</span>
+                  ) : (
+                    <button type="button" className="text-btn danger-btn" onClick={() => handleDeleteUser(account)}>Delete</button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
 
   const renderAdminLessonsPage = () => {
     if (!selectedAdminCourse) {
@@ -1030,7 +1412,14 @@ function App() {
     const lessons = selectedAdminCourse.lessons || [];
 
     return (
-      <section className="page-section admin-lessons-page">
+      <section className="page-section admin-lessons-page admin-lesson-shell">
+        <div className="page-intro admin-route-intro">
+          <div>
+            <p className="mini-label">Admin workspace</p>
+            <h2>Course lessons</h2>
+          </div>
+          <span className="page-intro-badge admin-badge-pill">Curriculum</span>
+        </div>
         <div className="section-heading admin-header-row">
           <div>
             <p className="mini-label">Course content</p>
@@ -1127,12 +1516,14 @@ function App() {
         </div>
 
         <nav className="nav">
-          <button type="button" className="nav-btn" onClick={() => navigate('/')}>Home</button>
-          <button type="button" className="nav-btn" onClick={() => navigate('/courses')}>Courses</button>
+          <button type="button" className={`nav-btn ${isLandingRoute ? 'active' : ''}`} onClick={() => navigate('/')}>Home</button>
+          <button type="button" className={`nav-btn ${isCatalogRoute || isCourseDetailRoute ? 'active' : ''}`} onClick={() => navigate('/courses')}>Courses</button>
           {user ? (
             <>
-              <button type="button" className="nav-btn" onClick={() => setView('dashboard')}>Dashboard</button>
-              <button type="button" className="nav-btn" onClick={() => navigate('/dashboard/my-courses')}>My courses</button>
+              <button type="button" className={`nav-btn ${user.role === 'student' ? (isStudentPortalActive ? 'active' : '') : (isAdminPortalActive ? 'active' : '')}`} onClick={() => navigate(user.role === 'student' ? '/dashboard' : '/admin')}>Dashboard</button>
+              {user.role === 'student' && <button type="button" className={`nav-btn ${isMyCoursesRoute || isCourseLearnRoute ? 'active' : ''}`} onClick={() => navigate('/dashboard/my-courses')}>My courses</button>}
+              {['admin', 'super_admin'].includes(user.role) && <button type="button" className={`nav-btn ${isAdminPaymentsRoute ? 'active' : ''}`} onClick={() => navigate('/admin/payments')}>Payments</button>}
+              {user.role === 'super_admin' && <button type="button" className={`nav-btn ${isOwnerRoute ? 'active' : ''}`} onClick={() => navigate('/owner')}>Owner</button>}
               <button type="button" className="nav-btn" onClick={logout}>Logout</button>
             </>
           ) : (
@@ -1146,11 +1537,16 @@ function App() {
 
       {isCatalogRoute && renderCourseCatalogPage()}
       {isCourseDetailRoute && renderCourseDetailPage()}
+      {isStudentDashboardRoute && renderStudentDashboardPage()}
       {isMyCoursesRoute && renderMyCoursesPage()}
       {isCourseLearnRoute && renderLearningPage()}
+      {isAdminDashboardRoute && renderAdminDashboardPage()}
+      {isAdminPaymentsRoute && renderAdminPaymentsPage()}
+      {isAdminCatalogRoute && renderAdminCatalogPage()}
+      {isOwnerRoute && renderOwnerControlsPage()}
       {isAdminLessonsRoute && renderAdminLessonsPage()}
 
-      {!isCatalogRoute && !isCourseDetailRoute && !isMyCoursesRoute && !isCourseLearnRoute && !isAdminLessonsRoute && view === 'landing' && (
+      {!isCatalogRoute && !isCourseDetailRoute && !isStudentDashboardRoute && !isMyCoursesRoute && !isCourseLearnRoute && !isAdminDashboardRoute && !isAdminPaymentsRoute && !isAdminCatalogRoute && !isOwnerRoute && !isAdminLessonsRoute && view === 'landing' && (
         <>
           <main className="hero-section">
             <div className="hero-copy">
@@ -1436,339 +1832,31 @@ function App() {
         </section>
       )}
 
-      {view === 'dashboard' && user && (
-        <section className="dashboard-shell">
-          <div className="dashboard-header">
-            <div>
-              <p className="mini-label">
-                {user.role === 'super_admin' ? 'Owner dashboard' : user.role === 'admin' ? 'Admin dashboard' : 'Student dashboard'}
-              </p>
-              <h2>Welcome back, {user.fullName}</h2>
-            </div>
-            <button type="button" className="secondary-btn" onClick={logout}>Logout</button>
-          </div>
+      {view === 'dashboard' && user && user.role === 'student' && isStudentDashboardRoute && renderStudentDashboardPage()}
 
-          <div className="metrics-grid">
-            {dashboardMetrics.map((metric) => (
-              <div key={metric.label} className="metric-card">
-                <p>{metric.label}</p>
-                <h3>{metric.value}</h3>
-              </div>
-            ))}
-          </div>
-
-          {['admin', 'super_admin'].includes(user.role) && (
-            <nav className="admin-sidebar" aria-label="Admin sections">
+      {['admin', 'super_admin'].includes(user?.role) && (isAdminDashboardRoute || isAdminPaymentsRoute || isAdminCatalogRoute || isOwnerRoute || isAdminLessonsRoute) && (
+        <div className="admin-workspace-shell">
+          <aside className="admin-sidebar" aria-label="Admin sections">
+            <div className="admin-sidebar-header">
               <p className="mini-label">Workspace</p>
-              <button type="button" className={adminSection === 'dashboard' ? 'active' : ''} onClick={() => setAdminSection('dashboard')}>Dashboard</button>
-              <button type="button" className={adminSection === 'payments' ? 'active' : ''} onClick={() => setAdminSection('payments')}>Payment review</button>
-              <button type="button" className={adminSection === 'catalog' ? 'active' : ''} onClick={() => setAdminSection('catalog')}>Catalog controls</button>
-              {user.role === 'super_admin' && <button type="button" className={adminSection === 'owner' ? 'active' : ''} onClick={() => setAdminSection('owner')}>Owner controls</button>}
-            </nav>
-          )}
-
-          {user.role === 'student' && (
-            <>
-              <div className="dashboard-card">
-                <h3>Available courses</h3>
-                <div className="pricing-grid">
-                  {courses.map((course) => {
-                    const enrollment = enrollments.find((item) => item.courseId === course.id || item.course?.id === course.id);
-                    const isApproved = enrollment?.status === 'approved';
-                    const isRetryable = enrollment?.status === 'failed';
-                    const buttonLabel = isApproved
-                      ? 'Access approved'
-                      : enrollment?.status === 'paid_pending_approval'
-                        ? 'Awaiting approval'
-                        : enrollment?.status === 'pending_payment'
-                          ? 'Payment pending'
-                          : isRetryable
-                            ? 'Retry payment'
-                            : 'Pay with Paystack';
-
-                    return (
-                      <article className="pricing-card" key={course.id || course.slug}>
-                        <p className="card-name">{course.title}</p>
-                        <h3>{formatMoney(course.price)}</h3>
-                        <p className="card-copy">{course.description}</p>
-                        <button
-                          type="button"
-                          className="secondary-btn full-width"
-                          onClick={() => handleEnrollment(course)}
-                          disabled={(Boolean(enrollment) && !isRetryable) || checkoutLoading}
-                        >
-                          {checkoutLoading && !enrollment ? 'Preparing checkout...' : buttonLabel}
-                        </button>
-                      </article>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="dashboard-grid">
-              <div className="dashboard-card">
-                <h3>Enrollment status</h3>
-                <ul>
-                  <li>Course access: {enrollments.some((item) => item.status === 'approved') ? 'Approved' : 'Awaiting payment or approval'}</li>
-                  <li>Institution: {user.institution || 'Not provided'}</li>
-                  <li>Phone: {user.phone || 'Not provided'}</li>
-                  <li>Active enrollments: {enrollments.filter((item) => item.status === 'approved').length}</li>
-                </ul>
-              </div>
-
-              <div className="dashboard-card">
-                <h3>Learning path</h3>
-                <ul>
-                  {user.enrolledCourses?.length ? (
-                    user.enrolledCourses.map((courseId) => <li key={courseId}>{courseId}</li>)
-                  ) : (
-                    <>
-                      <li>Sabre command structures</li>
-                      <li>PNR creation and data handling</li>
-                      <li>Ticket issuance and fare checks</li>
-                    </>
-                  )}
-                </ul>
-              </div>
-              </div>
-            </>
-          )}
-
-          {['admin', 'super_admin'].includes(user.role) && adminSection === 'payments' && (
-            <div className="admin-panel">
-              <div className="admin-panel-heading">
-                <div>
-                  <p className="mini-label">Payment review</p>
-                  <h3>Course access approvals</h3>
-                </div>
-                <span className="admin-badge">{adminEnrollments.length} pending</span>
-              </div>
-              <p className="admin-panel-copy">Approve access only after the Paystack payment appears here as confirmed.</p>
-              <div className="user-table-wrap">
-                <table className="user-table">
-                  <thead>
-                    <tr><th>Student</th><th>Course</th><th>Amount</th><th>Reference</th><th>Action</th></tr>
-                  </thead>
-                  <tbody>
-                    {adminEnrollments.length ? adminEnrollments.map((enrollment) => (
-                      <tr key={enrollment.id}>
-                        <td><strong>{enrollment.student?.fullName || 'Unknown student'}</strong><span>{enrollment.student?.email || ''}</span></td>
-                        <td>{enrollment.course?.title || 'Unknown course'}</td>
-                        <td>{formatMoney(enrollment.course?.price)}</td>
-                        <td>{enrollment.paymentReference}</td>
-                        <td><button type="button" className="primary-btn" onClick={() => approveEnrollment(enrollment)}>Approve access</button></td>
-                      </tr>
-                    )) : (
-                      <tr><td colSpan="5" className="muted-text">No paid enrollments are waiting for approval.</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              <span className="admin-side-label">{user.role === 'super_admin' ? 'Owner' : 'Admin'}</span>
             </div>
-          )}
+            <button type="button" className={route === '/admin' ? 'active' : ''} onClick={() => navigate('/admin')}>Dashboard</button>
+            <button type="button" className={route === '/admin/payments' ? 'active' : ''} onClick={() => navigate('/admin/payments')}>Payment review</button>
+            <button type="button" className={route === '/admin/catalog' ? 'active' : ''} onClick={() => navigate('/admin/catalog')}>Catalog controls</button>
+            {user.role === 'super_admin' && <button type="button" className={route === '/owner' ? 'active' : ''} onClick={() => navigate('/owner')}>Owner controls</button>}
+          </aside>
 
-          {user.role === 'super_admin' && adminSection === 'owner' && (
-            <div className="admin-panel">
-              <div className="admin-panel-heading">
-                <div>
-                  <p className="mini-label">Owner controls</p>
-                  <h3>User access</h3>
-                </div>
-                <span className="admin-badge">Super admin</span>
-              </div>
-              <p className="admin-panel-copy">Promote trusted students to portal admins. The super admin account cannot be changed from this screen.</p>
-              <div className="user-table-wrap">
-                <table className="user-table">
-                  <thead>
-                    <tr>
-                      <th>User</th>
-                      <th>Role</th>
-                      <th>Enrollment</th>
-                      <th>Access</th>
-                      <th>Manage</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {adminUsers.map((account) => (
-                      <tr key={account.id}>
-                        <td>
-                          <strong>{account.fullName}</strong>
-                          <span>{account.email}</span>
-                        </td>
-                        <td><span className={`role-pill role-${account.role}`}>{account.role.replace('_', ' ')}</span></td>
-                        <td>{account.enrolledCourses?.length || 0} courses</td>
-                        <td>
-                          {account.role === 'super_admin' ? (
-                            <span className="muted-text">Protected</span>
-                          ) : (
-                            <select value={account.role} onChange={(event) => handleRoleChange(account, event.target.value)}>
-                              <option value="student">Student</option>
-                              <option value="admin">Admin</option>
-                            </select>
-                          )}
-                        </td>
-                        <td>
-                          {account.role === 'super_admin' ? (
-                            <span className="muted-text">Protected</span>
-                          ) : (
-                            <button type="button" className="text-btn danger-btn" onClick={() => handleDeleteUser(account)}>Delete</button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {['admin', 'super_admin'].includes(user.role) && adminSection === 'catalog' && (
-            <div className="admin-panel">
-              <div className="admin-panel-heading">
-                <div>
-                  <p className="mini-label">Catalog controls</p>
-                  <h3>Courses and pricing</h3>
-                </div>
-                <span className="admin-badge">Editable catalog</span>
-              </div>
-              <p className="admin-panel-copy">Create courses, change pricing, and publish or archive offers without changing application code.</p>
-
-              <form className="course-editor" onSubmit={saveCourse}>
-                <label>
-                  Course title
-                  <input name="title" value={courseForm.title} onChange={handleCourseChange} placeholder="Sabre Core Ticketing" required />
-                </label>
-                <label>
-                  Price
-                  <input name="price" type="number" min="0" value={courseForm.price} onChange={handleCourseChange} required />
-                </label>
-                <label>
-                  Duration
-                  <input name="duration" value={courseForm.duration} onChange={handleCourseChange} placeholder="4 weeks" />
-                </label>
-                <label>
-                  Level
-                  <select name="level" value={courseForm.level} onChange={handleCourseChange}>
-                    <option>Beginner</option>
-                    <option>Intermediate</option>
-                    <option>Advanced</option>
-                  </select>
-                </label>
-                <label>
-                  Course thumbnail
-                  <input type="file" accept="image/*" onChange={handleThumbnailUpload} disabled={uploadingThumbnail} />
-                  <span className="field-hint">{uploadingThumbnail ? 'Uploading to Cloudinary...' : courseForm.thumbnailUrl ? 'Thumbnail ready to save' : 'JPG, PNG, or WebP'}</span>
-                </label>
-                <label className="course-editor-wide">
-                  Description
-                  <textarea name="description" value={courseForm.description} onChange={handleCourseChange} placeholder="Describe the outcome students will get." required />
-                </label>
-                <label>
-                  Visibility
-                  <select name="status" value={courseForm.status} onChange={handleCourseChange}>
-                    <option value="draft">Draft</option>
-                    <option value="published">Published</option>
-                    <option value="paused">Paused</option>
-                    <option value="archived">Archived</option>
-                  </select>
-                </label>
-                <label className="checkbox-label">
-                  <input name="featured" type="checkbox" checked={courseForm.featured} onChange={handleCourseChange} />
-                  Featured course
-                </label>
-                <div className="course-editor-actions">
-                  <button type="submit" className="primary-btn">{editingCourseId ? 'Save changes' : 'Create course'}</button>
-                  {editingCourseId && <button type="button" className="secondary-btn" onClick={resetCourseForm}>Cancel</button>}
-                </div>
-              </form>
-
-              <div className="admin-course-list">
-                {adminCourses.map((course) => (
-                  <div className="admin-course-row" key={course.id}>
-                    <div>
-                      {course.thumbnailUrl && <img className="admin-course-thumb" src={course.thumbnailUrl} alt="" />}
-                      <strong>{course.title}</strong>
-                      <span>{formatMoney(course.price)} · {course.status || 'draft'} · {course.lessons?.length || 0} lessons</span>
-                    </div>
-                    <div className="admin-course-actions">
-                      <button type="button" className="text-btn" onClick={() => editCourse(course)}>Edit</button>
-                      <button type="button" className="text-btn" onClick={() => { navigate(`/admin/courses/${course.id}/lessons`); setSelectedCourseId(course.id); resetLessonForm(); }}>Lessons</button>
-                      {course.status !== 'archived' && <button type="button" className="text-btn danger-btn" onClick={() => archiveCourse(course)}>Archive</button>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {selectedCourseId && (
-                <div className="lesson-editor">
-                  <div className="lesson-editor-heading">
-                    <div>
-                      <p className="mini-label">Content manager</p>
-                      <h4>{adminCourses.find((course) => course.id === selectedCourseId)?.title} lessons</h4>
-                    </div>
-                    <button type="button" className="text-btn" onClick={() => { setSelectedCourseId(''); resetLessonForm(); }}>Close</button>
-                  </div>
-
-                  <form className="course-editor" onSubmit={saveLesson}>
-                    <label>
-                      Lesson title
-                      <input name="title" value={lessonForm.title} onChange={handleLessonChange} placeholder="PNR creation and passenger data" required />
-                    </label>
-                    <label>
-                      Lesson type
-                      <select name="type" value={lessonForm.type} onChange={handleLessonChange}>
-                        <option value="video">Video</option>
-                        <option value="guide">Guide</option>
-                        <option value="quiz">Quiz</option>
-                      </select>
-                    </label>
-                    <label>
-                      Content URL
-                      <input name="contentUrl" type="url" value={lessonForm.contentUrl} onChange={handleLessonChange} placeholder="https://..." />
-                    </label>
-                    <label>
-                      Upload lesson file
-                      <input type="file" accept="video/*,application/pdf,image/*" onChange={handleLessonFileUpload} disabled={uploadingFile} />
-                      <span className="field-hint">{uploadingFile ? 'Uploading to Cloudinary...' : 'Video, PDF, or image'}</span>
-                    </label>
-                    <label>
-                      Duration
-                      <input name="duration" value={lessonForm.duration} onChange={handleLessonChange} placeholder="12 minutes" />
-                    </label>
-                    <label>
-                      Order
-                      <input name="order" type="number" min="0" value={lessonForm.order} onChange={handleLessonChange} />
-                    </label>
-                    <label className="checkbox-label">
-                      <input name="isPreview" type="checkbox" checked={lessonForm.isPreview} onChange={handleLessonChange} />
-                      Free preview lesson
-                    </label>
-                    <div className="course-editor-actions">
-                      <button type="submit" className="primary-btn">{editingLessonId ? 'Save lesson' : 'Add lesson'}</button>
-                      {editingLessonId && <button type="button" className="secondary-btn" onClick={resetLessonForm}>Cancel</button>}
-                    </div>
-                  </form>
-
-                  <div className="lesson-list">
-                    {(adminCourses.find((course) => course.id === selectedCourseId)?.lessons || []).map((lesson) => (
-                      <div className="lesson-row" key={lesson._id || lesson.id}>
-                        <div>
-                          <strong>{lesson.order + 1}. {lesson.title}</strong>
-                          <span>{lesson.type} {lesson.isPreview ? '· Preview' : ''} {lesson.duration ? `· ${lesson.duration}` : ''}</span>
-                        </div>
-                        <div className="admin-course-actions">
-                          <button type="button" className="text-btn" onClick={() => editLesson(adminCourses.find((course) => course.id === selectedCourseId), lesson)}>Edit</button>
-                          <button type="button" className="text-btn danger-btn" onClick={() => deleteLesson(adminCourses.find((course) => course.id === selectedCourseId), lesson)}>Delete</button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </section>
+          <div className="admin-page-content">
+            {isAdminDashboardRoute && renderAdminDashboardPage()}
+            {isAdminPaymentsRoute && renderAdminPaymentsPage()}
+            {isAdminCatalogRoute && renderAdminCatalogPage()}
+            {isOwnerRoute && renderOwnerControlsPage()}
+            {isAdminLessonsRoute && renderAdminLessonsPage()}
+          </div>
+        </div>
       )}
+
     </div>
   );
 }
