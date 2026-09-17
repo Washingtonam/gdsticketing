@@ -43,7 +43,8 @@ export function AdminLessonsPage({
       <div className="admin-lessons-layout">
         <form className="course-editor" onSubmit={saveLesson}>
           <label>Lesson title<input name="title" value={lessonForm.title} onChange={handleLessonChange} placeholder="Day 1: Ticketing basics" required /></label>
-          <label>Lesson type<select name="type" value={lessonForm.type} onChange={handleLessonChange}><option value="video">Video</option><option value="guide">Guide</option><option value="quiz">Quiz</option></select></label>
+          <label>Module<select name="moduleId" value={lessonForm.moduleId} onChange={handleLessonChange}><option value="">Top-level lesson</option>{modules.slice().sort((first, second) => (first.order || 0) - (second.order || 0)).map((module) => <option key={module._id || module.id} value={module._id || module.id}>{module.title}</option>)}</select></label>
+          <label>Lesson type<select name="type" value={lessonForm.type} onChange={handleLessonChange}><option value="video">Video</option><option value="guide">Guide</option><option value="pdf">PDF</option><option value="text">Text</option><option value="quiz">Quiz</option><option value="assignment">Assignment</option></select></label>
           <label>Content URL<input name="contentUrl" type="url" value={lessonForm.contentUrl} onChange={handleLessonChange} placeholder="https://..." /></label>
           <label>Resource title<input name="resourceTitle" value={lessonForm.resourceTitle} onChange={handleLessonChange} placeholder="Day 1 cheat sheet" /></label>
           <label>Upload lesson file<input type="file" accept="video/*,application/pdf,image/*" onChange={handleLessonFileUpload} disabled={uploadingFile} /><span className="field-hint">{uploadingFile ? 'Uploading...' : 'Video, PDF, or image'}</span></label>
@@ -78,10 +79,10 @@ export function AdminLessonsPage({
             </div>
           ))}</div> : <p className="muted-text">No modules yet. Add a module container before assigning lessons.</p>}
           <h3>Day-by-day schedule</h3>
-          {lessons.length ? <div className="schedule-list">{lessons.slice().sort((first, second) => (first.order || 0) - (second.order || 0)).map((lesson, index) => {
+          {lessons.length || modules.some((module) => module.lessons?.length) ? <div className="schedule-list">{[...lessons, ...modules.flatMap((module) => (module.lessons || []).map((lesson) => ({ ...lesson, moduleTitle: module.title })))].sort((first, second) => (first.order || 0) - (second.order || 0)).map((lesson, index) => {
             const weekNumber = Math.floor(index / 5) + 1;
             const dayNumber = index + 1;
-            return <div className="schedule-item" key={lesson._id || lesson.id || `${selectedAdminCourse.id}-lesson-${index}`}><div><p className="mini-label">Week {lesson.week || weekNumber} · Day {lesson.day || dayNumber}</p><strong>{lesson.title}</strong><span>{lesson.type} · {lesson.duration || 'No duration'} · {lesson.isPreview ? 'Preview' : 'Full access'}</span></div><div className="admin-course-actions"><button type="button" className="text-btn" onClick={() => editLesson(selectedAdminCourse, lesson)}>Edit</button><button type="button" className="text-btn danger-btn" onClick={() => deleteLesson(selectedAdminCourse, lesson)}>Delete</button></div></div>;
+            return <div className="schedule-item" key={lesson._id || lesson.id || `${selectedAdminCourse.id}-lesson-${index}`}><div><p className="mini-label">{lesson.moduleTitle || 'Top-level lesson'} · Week {lesson.week || weekNumber} · Day {lesson.day || dayNumber}</p><strong>{lesson.title}</strong><span>{lesson.type} · {lesson.duration || 'No duration'} · {lesson.isPreview ? 'Preview' : 'Full access'}</span></div><div className="admin-course-actions"><button type="button" className="text-btn" onClick={() => editLesson(selectedAdminCourse, lesson)}>Edit</button><button type="button" className="text-btn danger-btn" onClick={() => deleteLesson(selectedAdminCourse, lesson)}>Delete</button></div></div>;
           })}</div> : <p className="muted-text">No lessons yet. Add the first day of content for this course.</p>}
         </div>
       </div>

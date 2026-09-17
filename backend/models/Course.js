@@ -12,6 +12,7 @@ const quizQuestionSchema = new mongoose.Schema(
 const lessonSchema = new mongoose.Schema(
   {
     title: { type: String, required: true },
+    moduleId: { type: String, default: '' },
     type: { type: String, enum: ['video', 'guide', 'pdf', 'text', 'quiz', 'assignment'], default: 'video' },
     contentUrl: { type: String, default: '' },
     contentMimeType: { type: String, default: '' },

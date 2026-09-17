@@ -660,8 +660,14 @@ const validateCourseInput = (course) => {
   return null;
 };
 
+const hasCourseContent = (course) => (
+  (course.lessons || []).length > 0
+  || (course.modules || []).some((module) => (module.lessons || []).length > 0)
+);
+
 const normalizeLessonInput = (input, fallbackOrder = 0) => ({
   title: String(input.title || '').trim(),
+  moduleId: String(input.moduleId || '').trim(),
   type: ['video', 'guide', 'pdf', 'text', 'quiz', 'assignment'].includes(input.type) ? input.type : 'video',
   contentUrl: String(input.contentUrl || '').trim(),
   contentMimeType: String(input.contentMimeType || '').trim(),
@@ -706,6 +712,9 @@ app.post('/api/v1/admin/courses', requireAuth, requireAdmin, async (req, res) =>
   const validationError = validateCourseInput(courseInput);
 
   if (validationError) return res.status(400).json({ message: validationError });
+  if (courseInput.status === 'published' && !hasCourseContent(courseInput)) {
+    return res.status(400).json({ message: 'Add at least one lesson before publishing this course.' });
+  }
 
   if (databaseReady) {
     const course = await Course.create({ ...courseInput, lessons: courseInput.lessons || [] });
@@ -728,6 +737,13 @@ app.put('/api/v1/admin/courses/:courseId', requireAuth, requireAdmin, async (req
   if (validationError) return res.status(400).json({ message: validationError });
 
   if (databaseReady) {
+    if (courseInput.status === 'published') {
+      const existingCourse = await Course.findById(req.params.courseId).lean();
+      if (!existingCourse) return res.status(404).json({ message: 'Course not found.' });
+      if (!hasCourseContent({ ...existingCourse, ...courseInput })) {
+        return res.status(400).json({ message: 'Add at least one lesson before publishing this course.' });
+      }
+    }
     const course = await Course.findByIdAndUpdate(req.params.courseId, courseInput, { new: true, runValidators: true });
 
     if (!course) return res.status(404).json({ message: 'Course not found.' });
@@ -736,6 +752,9 @@ app.put('/api/v1/admin/courses/:courseId', requireAuth, requireAdmin, async (req
 
   const course = courses.find((item) => item.id === req.params.courseId);
   if (!course) return res.status(404).json({ message: 'Course not found.' });
+  if (courseInput.status === 'published' && !hasCourseContent({ ...course, ...courseInput })) {
+    return res.status(400).json({ message: 'Add at least one lesson before publishing this course.' });
+  }
 
   Object.assign(course, courseInput);
   return res.json({ course });
@@ -764,9 +783,18 @@ app.post('/api/v1/admin/courses/:courseId/lessons', requireAuth, requireAdmin, a
     const validationError = validateLessonInput(lesson);
     if (validationError) return res.status(400).json({ message: validationError });
 
-    course.lessons.push(lesson);
+    if (lesson.moduleId) {
+      const module = course.modules.id(lesson.moduleId);
+      if (!module) return res.status(400).json({ message: 'Selected module was not found.' });
+      module.lessons.push(lesson);
+    } else {
+      course.lessons.push(lesson);
+    }
     await course.save();
-    return res.status(201).json({ lesson: course.lessons[course.lessons.length - 1] });
+    const storedLesson = lesson.moduleId
+      ? course.modules.id(lesson.moduleId).lessons[course.modules.id(lesson.moduleId).lessons.length - 1]
+      : course.lessons[course.lessons.length - 1];
+    return res.status(201).json({ lesson: storedLesson });
   }
 
   const course = courses.find((item) => item.id === req.params.courseId);
@@ -775,9 +803,17 @@ app.post('/api/v1/admin/courses/:courseId/lessons', requireAuth, requireAdmin, a
   const lesson = normalizeLessonInput(req.body || {}, course.lessons.length);
   const validationError = validateLessonInput(lesson);
   if (validationError) return res.status(400).json({ message: validationError });
+  if (lesson.moduleId && !(course.modules || []).some((module) => (module.id || module._id) === lesson.moduleId)) {
+    return res.status(400).json({ message: 'Selected module was not found.' });
+  }
 
   const storedLesson = { id: `lesson-${Date.now()}`, ...lesson };
-  course.lessons.push(storedLesson);
+  if (lesson.moduleId) {
+    const module = course.modules.find((item) => (item.id || item._id) === lesson.moduleId);
+    module.lessons = [...(module.lessons || []), storedLesson];
+  } else {
+    course.lessons.push(storedLesson);
+  }
   return res.status(201).json({ lesson: storedLesson });
 });
 
@@ -786,12 +822,27 @@ app.put('/api/v1/admin/courses/:courseId/lessons/:lessonId', requireAuth, requir
     const course = await Course.findById(req.params.courseId);
     if (!course) return res.status(404).json({ message: 'Course not found.' });
 
-    const lesson = course.lessons.id(req.params.lessonId);
+    const lesson = course.lessons.id(req.params.lessonId)
+      || course.modules.reduce((found, module) => found || module.lessons.id(req.params.lessonId), null);
     if (!lesson) return res.status(404).json({ message: 'Lesson not found.' });
 
     const nextLesson = normalizeLessonInput(req.body || {}, lesson.order);
     const validationError = validateLessonInput(nextLesson);
     if (validationError) return res.status(400).json({ message: validationError });
+    if (nextLesson.moduleId && !course.modules.id(nextLesson.moduleId)) {
+      return res.status(400).json({ message: 'Selected module was not found.' });
+    }
+
+    const currentModule = course.modules.find((module) => module.lessons.id(req.params.lessonId));
+    const currentTopLevelIndex = course.lessons.findIndex((item) => item._id.toString() === req.params.lessonId);
+    const targetModule = nextLesson.moduleId ? course.modules.id(nextLesson.moduleId) : null;
+    if (currentModule && currentModule !== targetModule) {
+      currentModule.lessons = currentModule.lessons.filter((item) => item._id.toString() !== req.params.lessonId);
+      if (targetModule) targetModule.lessons.push({ ...nextLesson, _id: req.params.lessonId });
+    } else if (currentTopLevelIndex >= 0 && targetModule) {
+      course.lessons.splice(currentTopLevelIndex, 1);
+      targetModule.lessons.push({ ...nextLesson, _id: req.params.lessonId });
+    }
 
     Object.assign(lesson, nextLesson);
     await course.save();
@@ -799,13 +850,17 @@ app.put('/api/v1/admin/courses/:courseId/lessons/:lessonId', requireAuth, requir
   }
 
   const course = courses.find((item) => item.id === req.params.courseId);
-  const lesson = course?.lessons.find((item) => item.id === req.params.lessonId);
   if (!course) return res.status(404).json({ message: 'Course not found.' });
+  const lesson = course.lessons.find((item) => item.id === req.params.lessonId)
+    || (course.modules || []).reduce((found, module) => found || (module.lessons || []).find((item) => item.id === req.params.lessonId), null);
   if (!lesson) return res.status(404).json({ message: 'Lesson not found.' });
 
   const nextLesson = normalizeLessonInput(req.body || {}, lesson.order);
   const validationError = validateLessonInput(nextLesson);
   if (validationError) return res.status(400).json({ message: validationError });
+  if (nextLesson.moduleId && !(course.modules || []).some((module) => (module.id || module._id) === nextLesson.moduleId)) {
+    return res.status(400).json({ message: 'Selected module was not found.' });
+  }
 
   Object.assign(lesson, nextLesson);
   return res.json({ lesson });
@@ -816,7 +871,8 @@ app.delete('/api/v1/admin/courses/:courseId/lessons/:lessonId', requireAuth, req
     const course = await Course.findById(req.params.courseId);
     if (!course) return res.status(404).json({ message: 'Course not found.' });
 
-    const lesson = course.lessons.id(req.params.lessonId);
+    const lesson = course.lessons.id(req.params.lessonId)
+      || course.modules.reduce((found, module) => found || module.lessons.id(req.params.lessonId), null);
     if (!lesson) return res.status(404).json({ message: 'Lesson not found.' });
 
     lesson.deleteOne();
@@ -828,9 +884,14 @@ app.delete('/api/v1/admin/courses/:courseId/lessons/:lessonId', requireAuth, req
   if (!course) return res.status(404).json({ message: 'Course not found.' });
 
   const lessonIndex = course.lessons.findIndex((item) => item.id === req.params.lessonId);
-  if (lessonIndex === -1) return res.status(404).json({ message: 'Lesson not found.' });
+  if (lessonIndex >= 0) {
+    course.lessons.splice(lessonIndex, 1);
+    return res.json({ message: 'Lesson deleted.' });
+  }
 
-  course.lessons.splice(lessonIndex, 1);
+  const module = (course.modules || []).find((item) => (item.lessons || []).some((lesson) => lesson.id === req.params.lessonId));
+  if (!module) return res.status(404).json({ message: 'Lesson not found.' });
+  module.lessons = module.lessons.filter((lesson) => lesson.id !== req.params.lessonId);
   return res.json({ message: 'Lesson deleted.' });
 });
 
@@ -1067,9 +1128,16 @@ app.post('/api/v1/payments/webhook', async (req, res) => {
   const reference = data.reference;
 
   if (databaseReady) {
-    const enrollment = await Enrollment.findOne({ paymentReference: reference, status: 'pending_payment' });
+    const enrollment = await Enrollment.findOne({ paymentReference: reference });
     if (!enrollment) {
       return res.status(404).json({ message: 'Payment reference is not linked to a pending enrollment.' });
+    }
+
+    if (enrollment.status === 'approved' && enrollment.paid) {
+      return res.json({ message: 'Payment was already processed.', reference });
+    }
+    if (enrollment.status !== 'pending_payment') {
+      return res.status(409).json({ message: 'Payment enrollment is not awaiting confirmation.' });
     }
 
     const course = await Course.findOne({ _id: enrollment.courseId });

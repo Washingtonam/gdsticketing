@@ -76,6 +76,7 @@ const initialCourseForm = {
 
 const initialLessonForm = {
   title: '',
+  moduleId: '',
   type: 'video',
   contentUrl: '',
   contentMimeType: '',
@@ -705,6 +706,7 @@ function App() {
     setEditingLessonId(lesson._id || lesson.id || '');
     setLessonForm({
       title: lesson.title || '',
+      moduleId: lesson.moduleId || '',
       type: lesson.type || 'video',
       contentUrl: lesson.contentUrl || '',
       contentMimeType: lesson.contentMimeType || '',
@@ -812,9 +814,21 @@ function App() {
       setAdminCourses((previous) => previous.map((course) => {
         if (course.id !== selectedCourseId) return course;
         const lessons = editingLessonId
-          ? course.lessons.map((lesson) => ((lesson._id || lesson.id) === editingLessonId ? payload.lesson : lesson))
-          : [...(course.lessons || []), payload.lesson];
-        return { ...course, lessons: lessons.sort((first, second) => (first.order || 0) - (second.order || 0)) };
+          ? (course.lessons || []).map((lesson) => ((lesson._id || lesson.id) === editingLessonId ? payload.lesson : lesson))
+          : lessonForm.moduleId ? (course.lessons || []) : [...(course.lessons || []), payload.lesson];
+        const modules = (course.modules || []).map((module) => ({
+          ...module,
+          lessons: (module.lessons || []).filter((lesson) => (lesson._id || lesson.id) !== editingLessonId),
+        }));
+        if (payload.lesson.moduleId) {
+          const targetModule = modules.find((module) => (module._id || module.id) === payload.lesson.moduleId);
+          if (targetModule) targetModule.lessons = [...targetModule.lessons, payload.lesson];
+        }
+        return {
+          ...course,
+          lessons: lessons.sort((first, second) => (first.order || 0) - (second.order || 0)),
+          modules,
+        };
       }));
       setStatus('Lesson saved successfully.');
       resetLessonForm();
@@ -835,7 +849,14 @@ function App() {
       if (!response.ok) throw new Error(payload.message || 'Unable to delete lesson.');
 
       setAdminCourses((previous) => previous.map((item) => item.id === course.id
-        ? { ...item, lessons: item.lessons.filter((itemLesson) => (itemLesson._id || itemLesson.id) !== lessonId) }
+        ? {
+            ...item,
+            lessons: (item.lessons || []).filter((itemLesson) => (itemLesson._id || itemLesson.id) !== lessonId),
+            modules: (item.modules || []).map((module) => ({
+              ...module,
+              lessons: (module.lessons || []).filter((itemLesson) => (itemLesson._id || itemLesson.id) !== lessonId),
+            })),
+          }
         : item));
       setStatus('Lesson deleted.');
     } catch (error) {
@@ -870,9 +891,12 @@ function App() {
       setAdminCourses((previous) => editingCourseId
         ? previous.map((course) => (course.id === editingCourseId ? payload.course : course))
         : [payload.course, ...previous]);
-      setCourses((previous) => editingCourseId
-        ? previous.map((course) => (course.id === editingCourseId ? payload.course : course))
-        : [...previous, payload.course]);
+      setCourses((previous) => {
+        const nextCourses = editingCourseId
+          ? previous.map((course) => (course.id === editingCourseId ? payload.course : course))
+          : payload.course.status === 'published' ? [...previous, payload.course] : previous;
+        return nextCourses.filter((course) => course.status === 'published');
+      });
       setStatus(`${payload.course.title} saved successfully.`);
       resetCourseForm();
     } catch (error) {
@@ -1321,7 +1345,7 @@ function App() {
             {isAdminPaymentsRoute && <AdminPaymentsPage adminEnrollments={adminEnrollments} formatMoney={formatMoney} approveEnrollment={approveEnrollment} />}
             {isAdminCatalogRoute && <AdminCatalogPage courseForm={courseForm} uploadingThumbnail={uploadingThumbnail} uploadingSyllabus={uploadingSyllabus} editingCourseId={editingCourseId} adminCourses={adminCourses} saveCourse={saveCourse} handleCourseChange={handleCourseChange} handleThumbnailUpload={handleThumbnailUpload} handleSyllabusUpload={handleSyllabusUpload} resetCourseForm={resetCourseForm} editCourse={editCourse} navigate={navigate} archiveCourse={archiveCourse} />}
             {isOwnerRoute && <OwnerControlsPage adminUsers={adminUsers} handleRoleChange={handleRoleChange} handleDeleteUser={handleDeleteUser} />}
-            {isAdminLessonsRoute && <AdminLessonsPage selectedAdminCourse={selectedAdminCourse} lessonForm={lessonForm} moduleForm={moduleForm} editingLessonId={editingLessonId} editingModuleId={editingModuleId} uploadingFile={uploadingFile} handleLessonChange={handleLessonChange} handleModuleChange={handleModuleChange} handleLessonFileUpload={handleLessonFileUpload} saveLesson={saveLesson} saveModule={saveModule} resetLessonForm={resetLessonForm} resetModuleForm={resetModuleForm} editModule={editModule} editLesson={editLesson} deleteLesson={deleteLesson} navigate={navigate} />}
+            {isAdminLessonsRoute && <AdminLessonsPage selectedAdminCourse={selectedAdminCourse} modules={selectedAdminCourse?.modules || []} lessonForm={lessonForm} moduleForm={moduleForm} editingLessonId={editingLessonId} editingModuleId={editingModuleId} uploadingFile={uploadingFile} handleLessonChange={handleLessonChange} handleModuleChange={handleModuleChange} handleLessonFileUpload={handleLessonFileUpload} saveLesson={saveLesson} saveModule={saveModule} resetLessonForm={resetLessonForm} resetModuleForm={resetModuleForm} editModule={editModule} editLesson={editLesson} deleteLesson={deleteLesson} navigate={navigate} />}
           </div>
         </div>
       )}

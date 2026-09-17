@@ -23,7 +23,10 @@ export function CourseCatalogPage({ courses, displayCourses, navigate }) {
             <h3>{course.displayPrice || formatMoney(course.price)}</h3>
             <p className="card-copy">{course.description}</p>
             <ul>
-              {(course.lessons || []).slice(0, 3).map((lesson) => (
+              {[
+                ...(course.lessons || []),
+                ...(course.modules || []).flatMap((module) => module.lessons || []),
+              ].slice(0, 3).map((lesson) => (
                 <li key={lesson._id || lesson.id || `${course.id}-${lesson.title}`}>{lesson.title}</li>
               ))}
             </ul>
@@ -46,6 +49,11 @@ export function CourseDetailPage({ selectedCourse, formatMoney, handleEnrollment
       </section>
     );
   }
+
+  const outlineLessons = [
+    ...(selectedCourse.lessons || []),
+    ...(selectedCourse.modules || []).flatMap((module) => module.lessons || []),
+  ];
 
   return (
     <section className="page-section">
@@ -78,7 +86,7 @@ export function CourseDetailPage({ selectedCourse, formatMoney, handleEnrollment
           <div className="learning-outline">
             <h3>Course structure</h3>
             <ul>
-              {(selectedCourse.lessons || []).length ? (selectedCourse.lessons || []).slice(0, 6).map((lesson) => (
+              {outlineLessons.length ? outlineLessons.slice(0, 6).map((lesson) => (
                 <li key={lesson._id || lesson.id || `${selectedCourse.id}-${lesson.title}`}>
                   {lesson.title} {lesson.duration ? `· ${lesson.duration}` : ''}
                 </li>

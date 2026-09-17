@@ -88,7 +88,7 @@ export function LearningPage({
           <div className="lesson-resource-card">
             <p>{activeLesson.duration || '45 mins'} · {activeLesson.type || 'video'}</p>
             <h3>Learning material</h3>
-            {activeLesson.type === 'guide' ? (
+            {['guide', 'pdf'].includes(activeLesson.type) ? (
               activeLesson.contentUrl ? <a href={activeLesson.contentUrl} target="_blank" rel="noreferrer" className="secondary-btn" onClick={() => { if (!currentLessonCompleted) toggleLessonCompletion(courseProgressKey, activeLessonId); }}>Open PDF guide</a>
                 : <p className="muted-text">The PDF guide has not been uploaded yet.</p>
             ) : activeLesson.type === 'quiz' ? (
@@ -109,6 +109,10 @@ export function LearningPage({
                   {quizResult && <p className="quiz-result">Score: {quizResult.score}/{quizResult.total} ({quizResult.percent}%). {quizResult.passed ? 'Passed' : 'Try again'}</p>}
                   <button type="button" className="secondary-btn" disabled={quizSubmitting || !activeLesson.questions?.length} onClick={() => submitQuiz(courseProgressKey, activeLessonId, activeLesson)}>{quizSubmitting ? 'Submitting...' : 'Submit quiz'}</button>
                 </div>
+              </div>
+            ) : ['text', 'assignment'].includes(activeLesson.type) ? (
+              <div className="lesson-text-content">
+                <p>{activeLesson.terminalInstructions || 'Read the instructions for this lesson, then mark it complete when you are done.'}</p>
               </div>
             ) : (
               <div className="video-placeholder">
