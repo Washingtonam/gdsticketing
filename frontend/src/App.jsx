@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import './App.css';
+import { CourseCatalogPage, CourseDetailPage } from './pages/CoursePages.jsx';
+import { AuthPage } from './pages/AuthPages.jsx';
+import { MyCoursesPage, StudentDashboardPage } from './pages/StudentPages.jsx';
+import { AdminDashboardPage, AdminPaymentsPage } from './pages/AdminPages.jsx';
+import { AdminCatalogPage } from './pages/AdminCatalogPage.jsx';
+import { OwnerControlsPage } from './pages/OwnerControlsPage.jsx';
+import { LearningPage } from './pages/LearningPage.jsx';
+import { AdminLessonsPage } from './pages/AdminLessonsPage.jsx';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -52,13 +60,18 @@ const initialAuthForm = {
 const initialCourseForm = {
   title: '',
   description: '',
+  targetAudience: '',
   duration: '4 weeks',
   price: '45000',
   currency: 'NGN',
+  pricingTier: '',
+  groupDiscountPercent: '0',
   level: 'Beginner',
   status: 'draft',
   featured: false,
   thumbnailUrl: '',
+  introVideoUrl: '',
+  syllabusUrl: '',
 };
 
 const initialLessonForm = {
@@ -73,6 +86,17 @@ const initialLessonForm = {
   duration: '',
   order: '0',
   isPreview: false,
+  required: true,
+  questionsJson: '[]',
+};
+
+const initialModuleForm = {
+  title: '',
+  description: '',
+  order: '0',
+  unlockMode: 'immediate',
+  unlockAfterDays: '0',
+  assessmentRequired: false,
 };
 
 const formatMoney = (amount) =>
@@ -87,7 +111,6 @@ const getCurrentPath = () => window.location.pathname || '/';
 function App() {
   const [view, setView] = useState('landing');
   const [route, setRoute] = useState(getCurrentPath());
-  const [adminSection, setAdminSection] = useState('dashboard');
   const [authMode, setAuthMode] = useState('login');
   const [showPassword, setShowPassword] = useState(false);
   const [token, setToken] = useState(() => localStorage.getItem('gds_token') || '');
@@ -102,16 +125,24 @@ function App() {
   const [editingCourseId, setEditingCourseId] = useState('');
   const [selectedCourseId, setSelectedCourseId] = useState('');
   const [lessonForm, setLessonForm] = useState(initialLessonForm);
+  const [moduleForm, setModuleForm] = useState(initialModuleForm);
+  const [editingModuleId, setEditingModuleId] = useState('');
   const [editingLessonId, setEditingLessonId] = useState('');
   const [uploadingFile, setUploadingFile] = useState(false);
   const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
+  const [uploadingSyllabus, setUploadingSyllabus] = useState(false);
   const [adminUsers, setAdminUsers] = useState([]);
   const [status, setStatus] = useState('');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [pendingEnrollmentCourse, setPendingEnrollmentCourse] = useState(null);
   const [activeLessonIndex, setActiveLessonIndex] = useState(0);
   const [learningLessons, setLearningLessons] = useState([]);
+  const [learningModules, setLearningModules] = useState([]);
   const [learningLoading, setLearningLoading] = useState(false);
   const [learningError, setLearningError] = useState('');
+  const [quizAnswers, setQuizAnswers] = useState({});
+  const [quizResult, setQuizResult] = useState(null);
+  const [quizSubmitting, setQuizSubmitting] = useState(false);
   const [enrollmentRefreshKey, setEnrollmentRefreshKey] = useState(0);
   const [adminEnrollmentRefreshKey, setAdminEnrollmentRefreshKey] = useState(0);
   const [studentProgress, setStudentProgress] = useState(() => {
@@ -379,6 +410,11 @@ function App() {
     setLessonForm((previous) => ({ ...previous, [name]: type === 'checkbox' ? checked : value }));
   };
 
+  const handleModuleChange = (event) => {
+    const { name, value, type, checked } = event.target;
+    setModuleForm((previous) => ({ ...previous, [name]: type === 'checkbox' ? checked : value }));
+  };
+
   const uploadToCloudinary = async (file, folder) => {
     if (!file) return '';
 
@@ -431,6 +467,22 @@ function App() {
     }
   };
 
+  const handleSyllabusUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setUploadingSyllabus(true);
+      const url = await uploadToCloudinary(file, 'gds-ticketing/course-syllabi');
+      setCourseForm((previous) => ({ ...previous, syllabusUrl: url }));
+      setStatus('Syllabus uploaded. Save the course to attach it.');
+    } catch (error) {
+      setStatus(error.message || 'Unable to upload syllabus.');
+    } finally {
+      setUploadingSyllabus(false);
+    }
+  };
+
   const handleLessonFileUpload = async (event) => {
     try {
       const url = await uploadToCloudinary(event.target.files?.[0], `gds-ticketing/courses/${selectedCourseId}`);
@@ -467,14 +519,7 @@ function App() {
     }
   };
 
-  const handleEnrollment = async (course) => {
-    if (!token) {
-      setStatus('Please create an account or log in before enrolling in a course.');
-      setAuthMode('register');
-      setView('auth');
-      return;
-    }
-
+  const initializeCheckout = async (course, authToken) => {
     try {
       setCheckoutLoading(true);
       setStatus('Preparing your secure checkout...');
@@ -483,7 +528,7 @@ function App() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({ courseId: course.id || course.slug }),
       });
@@ -508,6 +553,18 @@ function App() {
     } finally {
       setCheckoutLoading(false);
     }
+  };
+
+  const handleEnrollment = async (course) => {
+    if (!token) {
+      setPendingEnrollmentCourse(course);
+      setStatus('Please create an account or log in before enrolling in a course.');
+      setAuthMode('register');
+      navigate('/register');
+      return;
+    }
+
+    await initializeCheckout(course, token);
   };
 
   const handleDeleteUser = async (account) => {
@@ -571,6 +628,32 @@ function App() {
     }
   };
 
+  const submitQuiz = async (courseKey, lessonId, lesson) => {
+    if (!courseKey || !lessonId || !token || !lesson?.questions?.length) return;
+
+    try {
+      setQuizSubmitting(true);
+      const response = await fetch(`${API_URL}/api/v1/courses/${encodeURIComponent(courseKey)}/lessons/${encodeURIComponent(lessonId)}/quiz/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ answers: lesson.questions.map((question, index) => quizAnswers[index] ?? null) }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.message || 'Unable to submit quiz.');
+      setQuizResult(payload);
+      if (payload.passed) {
+        setStudentProgress(payload.progress || studentProgress);
+        setStatus('Quiz passed. Lesson completed.');
+      } else {
+        setStatus('Quiz submitted. Review the material and try again.');
+      }
+    } catch (error) {
+      setStatus(error.message || 'Unable to submit quiz.');
+    } finally {
+      setQuizSubmitting(false);
+    }
+  };
+
   const isLessonCompleted = (courseKey, lessonId) => {
     if (!courseKey || !lessonId) return false;
     return (studentProgress[courseKey] || []).includes(lessonId);
@@ -602,13 +685,18 @@ function App() {
     setCourseForm({
       title: course.title || '',
       description: course.description || '',
+      targetAudience: course.targetAudience || '',
       duration: course.duration || '',
       price: String(course.price || ''),
       currency: course.currency || 'NGN',
+      pricingTier: course.pricingTier || '',
+      groupDiscountPercent: String(course.groupDiscountPercent || 0),
       level: course.level || 'Beginner',
       status: course.status || 'draft',
       featured: Boolean(course.featured),
       thumbnailUrl: course.thumbnailUrl || '',
+      introVideoUrl: course.introVideoUrl || '',
+      syllabusUrl: course.syllabusUrl || '',
     });
   };
 
@@ -627,12 +715,67 @@ function App() {
       duration: lesson.duration || '',
       order: String(lesson.order ?? 0),
       isPreview: Boolean(lesson.isPreview),
+      required: lesson.required !== false,
+      questionsJson: JSON.stringify(lesson.questions || [], null, 2),
     });
   };
 
   const resetLessonForm = () => {
     setEditingLessonId('');
     setLessonForm(initialLessonForm);
+  };
+
+  const resetModuleForm = () => {
+    setEditingModuleId('');
+    setModuleForm(initialModuleForm);
+  };
+
+  const saveModule = async (event) => {
+    event.preventDefault();
+    const course = adminCourses.find((item) => item.id === selectedCourseId);
+    if (!course || !moduleForm.title.trim()) return;
+
+    const moduleId = editingModuleId;
+    const nextModule = {
+      ...(moduleId ? (course.modules || []).find((item) => (item._id || item.id) === moduleId) : {}),
+      title: moduleForm.title.trim(),
+      description: moduleForm.description.trim(),
+      order: Number(moduleForm.order) || 0,
+      unlockMode: moduleForm.unlockMode,
+      unlockAfterDays: Number(moduleForm.unlockAfterDays) || 0,
+      assessmentRequired: Boolean(moduleForm.assessmentRequired),
+      lessons: moduleId ? ((course.modules || []).find((item) => (item._id || item.id) === moduleId)?.lessons || []) : [],
+    };
+    const modules = moduleId
+      ? (course.modules || []).map((item) => ((item._id || item.id) === moduleId ? nextModule : item))
+      : [...(course.modules || []), nextModule];
+
+    try {
+      const response = await fetch(`${API_URL}/api/v1/admin/courses/${course.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ...course, modules, price: Number(course.price) }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.message || 'Unable to save module.');
+      setAdminCourses((previous) => previous.map((item) => item.id === course.id ? payload.course : item));
+      setStatus('Module saved successfully.');
+      resetModuleForm();
+    } catch (error) {
+      setStatus(error.message || 'Unable to save module.');
+    }
+  };
+
+  const editModule = (module) => {
+    setEditingModuleId(module._id || module.id || '');
+    setModuleForm({
+      title: module.title || '',
+      description: module.description || '',
+      order: String(module.order ?? 0),
+      unlockMode: module.unlockMode || 'immediate',
+      unlockAfterDays: String(module.unlockAfterDays ?? 0),
+      assessmentRequired: Boolean(module.assessmentRequired),
+    });
   };
 
   const saveLesson = async (event) => {
@@ -654,6 +797,13 @@ function App() {
           week: Number(lessonForm.week),
           day: Number(lessonForm.day),
           order: Number(lessonForm.order),
+          questions: (() => {
+            try {
+              return JSON.parse(lessonForm.questionsJson || '[]');
+            } catch (error) {
+              return [];
+            }
+          })(),
         }),
       });
       const payload = await response.json();
@@ -711,7 +861,7 @@ function App() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ ...courseForm, price: Number(courseForm.price) }),
+        body: JSON.stringify({ ...courseForm, price: Number(courseForm.price), groupDiscountPercent: Number(courseForm.groupDiscountPercent) }),
       });
       const payload = await response.json();
 
@@ -776,12 +926,17 @@ function App() {
 
       setToken(result.token);
       setUser(result.user);
+      const courseToEnroll = pendingEnrollmentCourse;
+      setPendingEnrollmentCourse(null);
       const nextRoute = result.user?.role === 'student' ? '/dashboard' : '/admin';
       window.history.pushState({}, '', nextRoute);
       setRoute(nextRoute);
       setView('dashboard');
       setStatus('');
       setAuthForm(initialAuthForm);
+      if (courseToEnroll && result.user?.role === 'student') {
+        await initializeCheckout(courseToEnroll, result.token);
+      }
     } catch (error) {
       setStatus(error.message || 'Login failed. Please try again.');
     }
@@ -841,11 +996,19 @@ function App() {
 
   useEffect(() => {
     setActiveLessonIndex(0);
+    setQuizAnswers({});
+    setQuizResult(null);
   }, [selectedCourseSlug, route]);
+
+  useEffect(() => {
+    setQuizAnswers({});
+    setQuizResult(null);
+  }, [activeLessonIndex]);
 
   useEffect(() => {
     if (!isCourseLearnRoute || !selectedCourseSlug || !token) {
       setLearningLessons([]);
+      setLearningModules([]);
       setLearningError('');
       return;
     }
@@ -860,6 +1023,7 @@ function App() {
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.message || 'Unable to load course lessons.');
         setLearningLessons(payload.lessons || []);
+        setLearningModules(payload.modules || []);
       } catch (error) {
         setLearningLessons([]);
         setLearningError(error.message || 'Unable to load course lessons.');
@@ -888,825 +1052,6 @@ function App() {
         displayPrice: card.price,
       }));
 
-  const renderCourseCatalogPage = () => (
-    <section className="page-section">
-      <div className="page-intro">
-        <div>
-          <p className="mini-label">Public catalog</p>
-          <h2>Choose your course</h2>
-        </div>
-        <span className="page-intro-badge student-badge">Public view</span>
-      </div>
-      <div className="pricing-grid">
-        {(courses.length ? courses : displayCourses).map((course) => (
-          <article key={course.id || course.slug} className="pricing-card">
-            {course.thumbnailUrl && <img className="course-card-image" src={course.thumbnailUrl} alt="" />}
-            <p className="card-name">{course.title}</p>
-            <h3>{course.displayPrice || formatMoney(course.price)}</h3>
-            <p className="card-copy">{course.description}</p>
-            <ul>
-              {(course.lessons || []).slice(0, 3).map((lesson) => (
-                <li key={lesson._id || lesson.id || `${course.id}-${lesson.title}`}>{lesson.title}</li>
-              )) || <li>Structured learning path</li>}
-            </ul>
-            <button type="button" className="secondary-btn full-width" onClick={() => navigate(`/courses/${course.slug || course.id}`)}>
-              View course
-            </button>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-
-  const renderCourseDetailPage = () => {
-    if (!selectedCourse) {
-      return (
-        <section className="page-section">
-          <p className="mini-label">Course detail</p>
-          <h2>Course not found</h2>
-        </section>
-      );
-    }
-
-    return (
-      <section className="page-section">
-        <div className="page-intro">
-          <div>
-            <p className="mini-label">Course overview</p>
-            <h2>{selectedCourse.title}</h2>
-          </div>
-          <span className="page-intro-badge">Course detail</span>
-        </div>
-        <div className="course-detail-shell">
-          {selectedCourse.thumbnailUrl && <img className="course-detail-image" src={selectedCourse.thumbnailUrl} alt="" />}
-          <div className="course-detail-copy">
-            <p className="mini-label">Course overview</p>
-            <h2>{selectedCourse.title}</h2>
-            <p>{selectedCourse.description}</p>
-            <div className="course-detail-meta">
-              <span>{selectedCourse.duration || '4 weeks'}</span>
-              <span>{selectedCourse.level || 'Beginner'}</span>
-              <span>{formatMoney(selectedCourse.price || 0)}</span>
-            </div>
-            <div className="cta-row">
-              <button type="button" className="primary-btn" onClick={() => handleEnrollment(selectedCourse)}>
-                Enroll now
-              </button>
-              <button type="button" className="secondary-btn" onClick={() => navigate('/courses')}>
-                Back to catalog
-              </button>
-            </div>
-            <div className="learning-outline">
-              <h3>Course structure</h3>
-              <ul>
-                {(selectedCourse.lessons || []).length ? (selectedCourse.lessons || []).slice(0, 6).map((lesson) => (
-                  <li key={lesson._id || lesson.id || `${selectedCourse.id}-${lesson.title}`}>
-                    {lesson.title} {lesson.duration ? `· ${lesson.duration}` : ''}
-                  </li>
-                )) : (
-                  <>
-                    <li>Day 1: Foundations</li>
-                    <li>Day 2: Workflow practice</li>
-                    <li>Day 3: Guided assignments</li>
-                  </>
-                )}
-              </ul>
-            </div>
-          </div>
-        </div>
-      </section>
-    );
-  };
-
-  const renderMyCoursesPage = () => (
-    <section className="page-section">
-      <div className="page-intro">
-        <div>
-          <p className="mini-label">Student portal</p>
-          <h2>My courses</h2>
-        </div>
-        <span className="page-intro-badge student-badge">Learning access</span>
-      </div>
-      <div className="pricing-grid">
-        {approvedCourses.length ? (
-          approvedCourses.map((enrollment) => {
-            const course = enrollment.course || courses.find((item) => item.id === enrollment.courseId || item.slug === enrollment.courseId) || null;
-            if (!course) return null;
-            return (
-              <article className="pricing-card" key={enrollment.id || enrollment.courseId}>
-                <p className="card-name">{course.title}</p>
-                <h3>{formatMoney(course.price || 0)}</h3>
-                <p className="card-copy">{course.description}</p>
-                <button type="button" className="secondary-btn full-width" onClick={() => navigate(`/courses/${course.slug || course.id}/learn`)}>
-                  Continue learning
-                </button>
-              </article>
-            );
-          })
-        ) : (
-          <div className="dashboard-card">
-            <h3>No approved courses yet</h3>
-            <p>Your approved learning access will appear here after payment confirmation and admin approval.</p>
-            <button type="button" className="primary-btn" onClick={() => navigate('/courses')}>Browse courses</button>
-          </div>
-        )}
-      </div>
-    </section>
-  );
-
-  const renderLearningPage = () => {
-    if (!selectedCourse) {
-      return (
-        <section className="page-section">
-          <p className="mini-label">Learning portal</p>
-          <h2>Course unavailable</h2>
-        </section>
-      );
-    }
-
-    const lessons = (learningLessons.length ? learningLessons : selectedCourse.lessons || [
-      { id: 'day-1', title: 'Day 1: Foundations', duration: '45 mins', type: 'video', contentUrl: '' },
-      { id: 'day-2', title: 'Day 2: Workflow practice', duration: '60 mins', type: 'guide', contentUrl: '' },
-      { id: 'day-3', title: 'Day 3: Guided assignment', duration: '35 mins', type: 'quiz', contentUrl: '' },
-    ]).slice().sort((first, second) => (first.order || 0) - (second.order || 0));
-
-    const activeLesson = lessons[activeLessonIndex] || lessons[0];
-    const activeLessonId = activeLesson?._id || activeLesson?.id || `lesson-${activeLessonIndex}`;
-    const courseProgressKey = selectedCourse.id || selectedCourse.slug;
-    const completedLessons = lessons.filter((lesson) => isLessonCompleted(courseProgressKey, lesson._id || lesson.id || `${selectedCourse.id}-lesson-${lesson.title}`)).length;
-    const completionPercent = lessons.length ? (completedLessons / lessons.length) * 100 : 0;
-    const previousLessonEnabled = activeLessonIndex > 0;
-    const nextLessonEnabled = activeLessonIndex < lessons.length - 1;
-    const currentLessonCompleted = isLessonCompleted(courseProgressKey, activeLessonId);
-
-    return (
-      <section className="page-section learning-page-shell">
-        <div className="page-intro">
-          <div>
-            <p className="mini-label">Learning portal</p>
-            <h2>{selectedCourse.title}</h2>
-          </div>
-          <span className="page-intro-badge student-badge">Course journey</span>
-        </div>
-        {learningLoading && <p className="form-status">Loading your course lessons...</p>}
-        {learningError && <p className="form-status">{learningError}</p>}
-        <div className="learning-page">
-          <aside className="learning-sidebar">
-          <p className="mini-label">Course roadmap</p>
-          <h3>{selectedCourse.title}</h3>
-          <div className="progress-label-row">
-            <span>Progress</span>
-            <strong>{Math.round(completionPercent)}%</strong>
-          </div>
-          <div className="progress-bar"><span style={{ width: `${completionPercent}%` }} /></div>
-          <ul className="module-list">
-            {lessons.map((lesson, index) => {
-              const lessonKey = lesson._id || lesson.id || `${selectedCourse.id}-lesson-${index}`;
-              const isComplete = isLessonCompleted(courseProgressKey, lessonKey);
-              const weekNumber = Math.floor(index / 5) + 1;
-
-              return (
-                <li
-                  key={lessonKey}
-                  className={index === activeLessonIndex ? 'active' : ''}
-                  onClick={() => setActiveLessonIndex(index)}
-                >
-                  <div className="lesson-tag-row">
-                    <strong>Week {lesson.week || weekNumber}</strong>
-                    {isComplete && <span className="complete-chip">Done</span>}
-                  </div>
-                  <span>Day {lesson.day || index + 1}</span>
-                  <span>{lesson.title}</span>
-                </li>
-              );
-            })}
-          </ul>
-        </aside>
-
-          <div className="learning-content">
-            <div className="learning-header">
-              <div>
-                <p className="mini-label">Current lesson</p>
-                <h2>{activeLesson.title}</h2>
-              </div>
-              <button type="button" className="primary-btn" onClick={() => navigate('/dashboard/my-courses')}>Back to my courses</button>
-            </div>
-
-            <div className="lesson-resource-card">
-            <p>{activeLesson.duration || '45 mins'} · {activeLesson.type || 'video'}</p>
-            <h3>Learning material</h3>
-            {activeLesson.type === 'guide' ? (
-              activeLesson.contentUrl ? (
-                <a href={activeLesson.contentUrl} target="_blank" rel="noreferrer" className="secondary-btn">Open PDF guide</a>
-              ) : <p className="muted-text">The PDF guide has not been uploaded yet.</p>
-            ) : activeLesson.type === 'quiz' ? (
-              <div className="quiz-card">
-                <p>Practice quiz</p>
-                <button type="button" className="secondary-btn">Start quiz</button>
-              </div>
-            ) : (
-              <div className="video-placeholder">
-                {activeLesson.contentUrl ? (
-                  <video controls className="lesson-video" src={activeLesson.contentUrl}>
-                    Your browser does not support video playback.
-                  </video>
-                ) : <p>Video lesson content will appear here once the lesson file is uploaded.</p>}
-              </div>
-            )}
-            {activeLesson.resourceTitle && <p className="field-hint">Resource: {activeLesson.resourceTitle}</p>}
-            {activeLesson.terminalInstructions && (
-              <div className="terminal-instructions">
-                <h4>Practical terminal access</h4>
-                <p>{activeLesson.terminalInstructions}</p>
-              </div>
-            )}
-          </div>
-
-            <div className="learning-actions">
-              <button type="button" className="secondary-btn" disabled={!previousLessonEnabled} onClick={() => setActiveLessonIndex((value) => Math.max(0, value - 1))}>Previous</button>
-              <button
-                type="button"
-                className="primary-btn"
-                onClick={() => toggleLessonCompletion(courseProgressKey, activeLessonId)}
-              >
-                {currentLessonCompleted ? 'Mark incomplete' : 'Mark complete'}
-              </button>
-              <button type="button" className="secondary-btn" disabled={!nextLessonEnabled} onClick={() => setActiveLessonIndex((value) => Math.min(lessons.length - 1, value + 1))}>Next lesson</button>
-            </div>
-          </div>
-        </div>
-      </section>
-    );
-  };
-
-  const renderAuthPage = (mode) => (
-    <section className="auth-shell">
-      <div className="page-intro auth-page-intro">
-        <div>
-          <p className="mini-label">Student portal</p>
-          <h2>{mode === 'login' ? 'Login' : 'Register'}</h2>
-        </div>
-        <span className="page-intro-badge auth-badge">{mode === 'login' ? 'Account access' : 'New student'}</span>
-      </div>
-      <div className="auth-card">
-        <p className="mini-label">Student portal</p>
-        <h2>{mode === 'login' ? 'Welcome back' : 'Create your account'}</h2>
-
-        <form onSubmit={handleAuthSubmit} className="lead-form auth-form">
-          {mode === 'register' && (
-            <label>
-              Full name
-              <input
-                type="text"
-                name="fullName"
-                value={authForm.fullName}
-                onChange={handleAuthChange}
-                placeholder="Jane Doe"
-                required
-              />
-            </label>
-          )}
-
-          <label>
-            Email address
-            <input
-              type="email"
-              name="email"
-              value={authForm.email}
-              onChange={handleAuthChange}
-              placeholder="jane@example.com"
-              required
-            />
-          </label>
-
-          {mode === 'register' && (
-            <>
-              <label>
-                Phone number
-                <input
-                  type="tel"
-                  name="phone"
-                  value={authForm.phone}
-                  onChange={handleAuthChange}
-                  placeholder="0803 000 0000"
-                />
-              </label>
-              <label>
-                Institution
-                <input
-                  type="text"
-                  name="institution"
-                  value={authForm.institution}
-                  onChange={handleAuthChange}
-                  placeholder="University of Lagos"
-                />
-              </label>
-            </>
-          )}
-
-          <label>
-            Password
-            <span className="password-field">
-              <input
-                type={showPassword ? 'text' : 'password'}
-                name="password"
-                value={authForm.password}
-                onChange={handleAuthChange}
-                placeholder="Enter your password"
-                required
-              />
-              <button
-                type="button"
-                className="password-toggle"
-                onClick={() => setShowPassword((visible) => !visible)}
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
-                title={showPassword ? 'Hide password' : 'Show password'}
-              >
-                {showPassword ? 'Hide' : 'Show'}
-              </button>
-            </span>
-          </label>
-
-          <button type="submit" className="primary-btn block-btn">
-            {mode === 'login' ? 'Login to dashboard' : 'Create account'}
-          </button>
-        </form>
-
-        <div className="switch-row">
-          <button
-            type="button"
-            className="text-btn"
-            onClick={() => {
-              const nextMode = mode === 'login' ? 'register' : 'login';
-              setAuthMode(nextMode);
-              navigate(nextMode === 'login' ? '/login' : '/register');
-            }}
-          >
-            {mode === 'login' ? 'Need an account? Register' : 'Already have an account? Login'}
-          </button>
-        </div>
-
-        {status ? <p className="form-status">{status}</p> : null}
-      </div>
-    </section>
-  );
-
-  const renderStudentDashboardPage = () => (
-    <section className="dashboard-shell student-dashboard-shell">
-      <div className="page-intro">
-        <div>
-          <p className="mini-label">Student workspace</p>
-          <h2>Learning dashboard</h2>
-        </div>
-        <span className="page-intro-badge student-badge">Access portal</span>
-      </div>
-      <div className="dashboard-header">
-        <div>
-          <p className="mini-label">Student dashboard</p>
-          <h2>Welcome back, {user?.fullName}</h2>
-        </div>
-        <button type="button" className="secondary-btn" onClick={logout}>Logout</button>
-      </div>
-
-      <div className="metrics-grid">
-        {dashboardMetrics.map((metric) => (
-          <div key={metric.label} className="metric-card">
-            <p>{metric.label}</p>
-            <h3>{metric.value}</h3>
-          </div>
-        ))}
-      </div>
-
-      <div className="dashboard-card">
-        <h3>Available courses</h3>
-        <div className="pricing-grid">
-          {courses.map((course) => {
-            const enrollment = enrollments.find((item) => item.courseId === course.id || item.course?.id === course.id);
-            const isApproved = enrollment?.status === 'approved';
-            const isRetryable = enrollment?.status === 'failed';
-            const buttonLabel = isApproved
-              ? 'Access approved'
-              : enrollment?.status === 'paid_pending_approval'
-                ? 'Awaiting approval'
-                : enrollment?.status === 'pending_payment'
-                  ? 'Payment pending'
-                  : isRetryable
-                    ? 'Retry payment'
-                    : 'Pay with Paystack';
-
-            return (
-              <article className="pricing-card" key={course.id || course.slug}>
-                <p className="card-name">{course.title}</p>
-                <h3>{formatMoney(course.price)}</h3>
-                <p className="card-copy">{course.description}</p>
-                <button
-                  type="button"
-                  className="secondary-btn full-width"
-                  onClick={() => handleEnrollment(course)}
-                  disabled={(Boolean(enrollment) && !isRetryable) || checkoutLoading}
-                >
-                  {checkoutLoading && !enrollment ? 'Preparing checkout...' : buttonLabel}
-                </button>
-              </article>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="dashboard-grid">
-        <div className="dashboard-card">
-          <h3>Enrollment status</h3>
-          <ul>
-            <li>Course access: {enrollments.some((item) => item.status === 'approved') ? 'Approved' : 'Awaiting payment or approval'}</li>
-            <li>Institution: {user?.institution || 'Not provided'}</li>
-            <li>Phone: {user?.phone || 'Not provided'}</li>
-            <li>Active enrollments: {enrollments.filter((item) => item.status === 'approved').length}</li>
-          </ul>
-        </div>
-
-        <div className="dashboard-card">
-          <h3>Learning path</h3>
-          <ul>
-            {user?.enrolledCourses?.length ? (
-              user.enrolledCourses.map((courseId) => <li key={courseId}>{courseId}</li>)
-            ) : (
-              <>
-                <li>Sabre command structures</li>
-                <li>PNR creation and data handling</li>
-                <li>Ticket issuance and fare checks</li>
-              </>
-            )}
-          </ul>
-        </div>
-      </div>
-    </section>
-  );
-
-  const renderAdminDashboardPage = () => (
-    <section className="dashboard-shell admin-dashboard-shell">
-      <div className="page-intro admin-intro">
-        <div>
-          <p className="mini-label">Admin workspace</p>
-          <h2>{user?.role === 'super_admin' ? 'Owner dashboard' : 'Admin dashboard'}</h2>
-        </div>
-        <span className="page-intro-badge admin-badge-pill">{user?.role === 'super_admin' ? 'Owner access' : 'Admin access'}</span>
-      </div>
-      <div className="dashboard-header">
-        <div>
-          <p className="mini-label">{user?.role === 'super_admin' ? 'Owner dashboard' : 'Admin dashboard'}</p>
-          <h2>Welcome back, {user?.fullName}</h2>
-        </div>
-        <button type="button" className="secondary-btn" onClick={logout}>Logout</button>
-      </div>
-
-      <div className="metrics-grid">
-        {dashboardMetrics.map((metric) => (
-          <div key={metric.label} className="metric-card">
-            <p>{metric.label}</p>
-            <h3>{metric.value}</h3>
-          </div>
-        ))}
-      </div>
-
-      <div className="admin-panel">
-        <div className="admin-panel-heading">
-          <div>
-            <p className="mini-label">Workspace</p>
-            <h3>Operations overview</h3>
-          </div>
-          <span className="admin-badge">{user?.role === 'super_admin' ? 'Owner access' : 'Admin access'}</span>
-        </div>
-        <p className="admin-panel-copy">Open a dedicated page for payment review, catalog control, or owner tools from the admin navigation.</p>
-        <div className="dashboard-grid">
-          <div className="dashboard-card">
-            <h3>Quick actions</h3>
-            <ul>
-              <li><button type="button" className="text-btn" onClick={() => navigate('/admin/payments')}>Review payments</button></li>
-              <li><button type="button" className="text-btn" onClick={() => navigate('/admin/catalog')}>Manage catalog</button></li>
-              {user?.role === 'super_admin' && <li><button type="button" className="text-btn" onClick={() => navigate('/owner')}>Owner controls</button></li>}
-            </ul>
-          </div>
-          <div className="dashboard-card">
-            <h3>Latest status</h3>
-            <ul>
-              <li>Courses in management: {adminCourses.length}</li>
-              <li>Payments awaiting review: {adminEnrollments.length}</li>
-              <li>Role: {user?.role === 'super_admin' ? 'Owner' : 'Admin'}</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-
-  const renderAdminPaymentsPage = () => (
-    <section className="admin-panel admin-shell-panel">
-      <div className="page-intro admin-route-intro">
-        <div>
-          <p className="mini-label">Admin workspace</p>
-          <h2>Payment review</h2>
-        </div>
-        <span className="page-intro-badge admin-badge-pill">Transactions</span>
-      </div>
-      <div className="admin-panel-heading">
-        <div>
-          <p className="mini-label">Payment review</p>
-          <h3>Course access approvals</h3>
-        </div>
-        <span className="admin-badge">{adminEnrollments.length} pending</span>
-      </div>
-      <p className="admin-panel-copy">Approve access only after the Paystack payment appears here as confirmed.</p>
-      <div className="user-table-wrap">
-        <table className="user-table">
-          <thead>
-            <tr><th>Student</th><th>Course</th><th>Amount</th><th>Reference</th><th>Action</th></tr>
-          </thead>
-          <tbody>
-            {adminEnrollments.length ? adminEnrollments.map((enrollment) => (
-              <tr key={enrollment.id}>
-                <td><strong>{enrollment.student?.fullName || 'Unknown student'}</strong><span>{enrollment.student?.email || ''}</span></td>
-                <td>{enrollment.course?.title || 'Unknown course'}</td>
-                <td>{formatMoney(enrollment.course?.price)}</td>
-                <td>{enrollment.paymentReference}</td>
-                <td><button type="button" className="primary-btn" onClick={() => approveEnrollment(enrollment)}>Approve access</button></td>
-              </tr>
-            )) : (
-              <tr><td colSpan="5" className="muted-text">No paid enrollments are waiting for approval.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-
-  const renderAdminCatalogPage = () => (
-    <section className="admin-panel admin-shell-panel">
-      <div className="page-intro admin-route-intro">
-        <div>
-          <p className="mini-label">Admin workspace</p>
-          <h2>Catalog controls</h2>
-        </div>
-        <span className="page-intro-badge admin-badge-pill">Course library</span>
-      </div>
-      <div className="admin-panel-heading">
-        <div>
-          <p className="mini-label">Catalog controls</p>
-          <h3>Courses and pricing</h3>
-        </div>
-        <span className="admin-badge">Editable catalog</span>
-      </div>
-      <p className="admin-panel-copy">Create courses, change pricing, and publish or archive offers without changing application code.</p>
-
-      <form className="course-editor" onSubmit={saveCourse}>
-        <label>
-          Course title
-          <input name="title" value={courseForm.title} onChange={handleCourseChange} placeholder="Sabre Core Ticketing" required />
-        </label>
-        <label>
-          Price
-          <input name="price" type="number" min="0" value={courseForm.price} onChange={handleCourseChange} required />
-        </label>
-        <label>
-          Duration
-          <input name="duration" value={courseForm.duration} onChange={handleCourseChange} placeholder="4 weeks" />
-        </label>
-        <label>
-          Level
-          <select name="level" value={courseForm.level} onChange={handleCourseChange}>
-            <option>Beginner</option>
-            <option>Intermediate</option>
-            <option>Advanced</option>
-          </select>
-        </label>
-        <label>
-          Course thumbnail
-          <input type="file" accept="image/*" onChange={handleThumbnailUpload} disabled={uploadingThumbnail} />
-          <span className="field-hint">{uploadingThumbnail ? 'Uploading to Cloudinary...' : courseForm.thumbnailUrl ? 'Thumbnail ready to save' : 'JPG, PNG, or WebP'}</span>
-        </label>
-        <label className="course-editor-wide">
-          Description
-          <textarea name="description" value={courseForm.description} onChange={handleCourseChange} placeholder="Describe the outcome students will get." required />
-        </label>
-        <label>
-          Visibility
-          <select name="status" value={courseForm.status} onChange={handleCourseChange}>
-            <option value="draft">Draft</option>
-            <option value="published">Published</option>
-            <option value="paused">Paused</option>
-            <option value="archived">Archived</option>
-          </select>
-        </label>
-        <label className="checkbox-label">
-          <input name="featured" type="checkbox" checked={courseForm.featured} onChange={handleCourseChange} />
-          Featured course
-        </label>
-        <div className="course-editor-actions">
-          <button type="submit" className="primary-btn">{editingCourseId ? 'Save changes' : 'Create course'}</button>
-          {editingCourseId && <button type="button" className="secondary-btn" onClick={resetCourseForm}>Cancel</button>}
-        </div>
-      </form>
-
-      <div className="admin-course-list">
-        {adminCourses.map((course) => (
-          <div key={course.id || course.slug} className="admin-course-item">
-            <div>
-              <p className="mini-label">{course.level || 'Course'}</p>
-              <h4>{course.title}</h4>
-              <span>{course.status || 'draft'}</span>
-            </div>
-            <div className="admin-course-actions">
-              <button type="button" className="text-btn" onClick={() => editCourse(course)}>Edit</button>
-              <button type="button" className="text-btn" onClick={() => navigate(`/admin/courses/${course.id || course.slug}/lessons`)}>Lessons</button>
-              <button type="button" className="text-btn danger-btn" onClick={() => archiveCourse(course)}>Archive</button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-
-  const renderOwnerControlsPage = () => (
-    <section className="admin-panel admin-shell-panel owner-shell-panel">
-      <div className="page-intro admin-route-intro owner-route-intro">
-        <div>
-          <p className="mini-label">Owner workspace</p>
-          <h2>User access</h2>
-        </div>
-        <span className="page-intro-badge owner-badge-pill">Super admin</span>
-      </div>
-      <div className="admin-panel-heading">
-        <div>
-          <p className="mini-label">Owner controls</p>
-          <h3>User access</h3>
-        </div>
-        <span className="admin-badge">Super admin</span>
-      </div>
-      <p className="admin-panel-copy">Promote trusted students to portal admins. The super admin account cannot be changed from this screen.</p>
-      <div className="user-table-wrap">
-        <table className="user-table">
-          <thead>
-            <tr>
-              <th>User</th>
-              <th>Role</th>
-              <th>Enrollment</th>
-              <th>Access</th>
-              <th>Manage</th>
-            </tr>
-          </thead>
-          <tbody>
-            {adminUsers.map((account) => (
-              <tr key={account.id}>
-                <td>
-                  <strong>{account.fullName}</strong>
-                  <span>{account.email}</span>
-                </td>
-                <td><span className={`role-pill role-${account.role}`}>{account.role.replace('_', ' ')}</span></td>
-                <td>{account.enrolledCourses?.length || 0} courses</td>
-                <td>
-                  {account.role === 'super_admin' ? (
-                    <span className="muted-text">Protected</span>
-                  ) : (
-                    <select value={account.role} onChange={(event) => handleRoleChange(account, event.target.value)}>
-                      <option value="student">Student</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                  )}
-                </td>
-                <td>
-                  {account.role === 'super_admin' ? (
-                    <span className="muted-text">Protected</span>
-                  ) : (
-                    <button type="button" className="text-btn danger-btn" onClick={() => handleDeleteUser(account)}>Delete</button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-
-  const renderAdminLessonsPage = () => {
-    if (!selectedAdminCourse) {
-      return (
-        <section className="page-section">
-          <p className="mini-label">Course content</p>
-          <h2>Choose a course to manage</h2>
-        </section>
-      );
-    }
-
-    const lessons = selectedAdminCourse.lessons || [];
-
-    return (
-      <section className="page-section admin-lessons-page admin-lesson-shell">
-        <div className="page-intro admin-route-intro">
-          <div>
-            <p className="mini-label">Admin workspace</p>
-            <h2>Course lessons</h2>
-          </div>
-          <span className="page-intro-badge admin-badge-pill">Curriculum</span>
-        </div>
-        <div className="section-heading admin-header-row">
-          <div>
-            <p className="mini-label">Course content</p>
-            <h2>{selectedAdminCourse.title}</h2>
-          </div>
-          <button type="button" className="secondary-btn" onClick={() => navigate('/admin/catalog')}>Back to catalog</button>
-        </div>
-
-        <div className="admin-lessons-layout">
-          <form className="course-editor" onSubmit={saveLesson}>
-            <label>
-              Lesson title
-              <input name="title" value={lessonForm.title} onChange={handleLessonChange} placeholder="Day 1: Ticketing basics" required />
-            </label>
-            <label>
-              Lesson type
-              <select name="type" value={lessonForm.type} onChange={handleLessonChange}>
-                <option value="video">Video</option>
-                <option value="guide">Guide</option>
-                <option value="quiz">Quiz</option>
-              </select>
-            </label>
-            <label>
-              Content URL
-              <input name="contentUrl" type="url" value={lessonForm.contentUrl} onChange={handleLessonChange} placeholder="https://..." />
-            </label>
-            <label>
-              Resource title
-              <input name="resourceTitle" value={lessonForm.resourceTitle} onChange={handleLessonChange} placeholder="Day 1 cheat sheet" />
-            </label>
-            <label>
-              Upload lesson file
-              <input type="file" accept="video/*,application/pdf,image/*" onChange={handleLessonFileUpload} disabled={uploadingFile} />
-              <span className="field-hint">{uploadingFile ? 'Uploading...' : 'Video, PDF, or image'}</span>
-            </label>
-            <label>
-              Week
-              <input name="week" type="number" min="1" value={lessonForm.week} onChange={handleLessonChange} />
-            </label>
-            <label>
-              Day
-              <input name="day" type="number" min="1" value={lessonForm.day} onChange={handleLessonChange} />
-            </label>
-            <label>
-              Duration
-              <input name="duration" value={lessonForm.duration} onChange={handleLessonChange} placeholder="45 minutes" />
-            </label>
-            <label>
-              Order
-              <input name="order" type="number" min="0" value={lessonForm.order} onChange={handleLessonChange} />
-            </label>
-            <label className="checkbox-label">
-              <input name="isPreview" type="checkbox" checked={lessonForm.isPreview} onChange={handleLessonChange} />
-              Free preview lesson
-            </label>
-            <label className="course-editor-wide">
-              Terminal instructions
-              <textarea name="terminalInstructions" value={lessonForm.terminalInstructions} onChange={handleLessonChange} placeholder="Add emulator access steps or practice credentials guidance." />
-            </label>
-            <div className="course-editor-actions">
-              <button type="submit" className="primary-btn">{editingLessonId ? 'Save lesson' : 'Add lesson'}</button>
-              {editingLessonId && <button type="button" className="secondary-btn" onClick={resetLessonForm}>Cancel</button>}
-            </div>
-          </form>
-
-          <div className="lesson-builder-panel">
-            <h3>Day-by-day schedule</h3>
-            {lessons.length ? (
-              <div className="schedule-list">
-                {lessons
-                  .slice()
-                  .sort((first, second) => (first.order || 0) - (second.order || 0))
-                  .map((lesson, index) => {
-                    const weekNumber = Math.floor(index / 5) + 1;
-                    const dayNumber = index + 1;
-
-                    return (
-                      <div className="schedule-item" key={lesson._id || lesson.id || `${selectedAdminCourse.id}-lesson-${index}`}>
-                        <div>
-                          <p className="mini-label">Week {lesson.week || weekNumber} · Day {lesson.day || dayNumber}</p>
-                          <strong>{lesson.title}</strong>
-                          <span>{lesson.type} · {lesson.duration || 'No duration'} · {lesson.isPreview ? 'Preview' : 'Full access'}</span>
-                        </div>
-                        <div className="admin-course-actions">
-                          <button type="button" className="text-btn" onClick={() => editLesson(selectedAdminCourse, lesson)}>Edit</button>
-                          <button type="button" className="text-btn danger-btn" onClick={() => deleteLesson(selectedAdminCourse, lesson)}>Delete</button>
-                        </div>
-                      </div>
-                    );
-                  })}
-              </div>
-            ) : (
-              <p className="muted-text">No lessons yet. Add the first day of content for this course.</p>
-            )}
-          </div>
-        </div>
-      </section>
-    );
-  };
 
   return (
     <div className="page-shell">
@@ -1741,10 +1086,10 @@ function App() {
         </header>
       )}
 
-      {isCatalogRoute && renderCourseCatalogPage()}
-      {isCourseDetailRoute && renderCourseDetailPage()}
-      {isMyCoursesRoute && renderMyCoursesPage()}
-      {isCourseLearnRoute && renderLearningPage()}
+      {isCatalogRoute && <CourseCatalogPage courses={courses} displayCourses={displayCourses} navigate={navigate} />}
+      {isCourseDetailRoute && <CourseDetailPage selectedCourse={selectedCourse} formatMoney={formatMoney} handleEnrollment={handleEnrollment} navigate={navigate} />}
+      {isMyCoursesRoute && <MyCoursesPage approvedCourses={approvedCourses} courses={courses} formatMoney={formatMoney} navigate={navigate} />}
+      {isCourseLearnRoute && <LearningPage selectedCourse={selectedCourse} learningModules={learningModules} learningLessons={learningLessons} learningLoading={learningLoading} learningError={learningError} activeLessonIndex={activeLessonIndex} setActiveLessonIndex={setActiveLessonIndex} isLessonCompleted={isLessonCompleted} toggleLessonCompletion={toggleLessonCompletion} quizAnswers={quizAnswers} setQuizAnswers={setQuizAnswers} quizResult={quizResult} setQuizResult={setQuizResult} quizSubmitting={quizSubmitting} submitQuiz={submitQuiz} navigate={navigate} />}
 
       {isLandingRoute && (
         <>
@@ -1931,9 +1276,32 @@ function App() {
         </>
       )}
 
-      {(isLoginRoute || isRegisterRoute) && renderAuthPage(isLoginRoute ? 'login' : 'register')}
+      {(isLoginRoute || isRegisterRoute) && (
+        <AuthPage
+          mode={isLoginRoute ? 'login' : 'register'}
+          authForm={authForm}
+          showPassword={showPassword}
+          status={status}
+          handleAuthChange={handleAuthChange}
+          handleAuthSubmit={handleAuthSubmit}
+          setShowPassword={setShowPassword}
+          setAuthMode={setAuthMode}
+          navigate={navigate}
+        />
+      )}
 
-      {view === 'dashboard' && user && user.role === 'student' && isStudentDashboardRoute && renderStudentDashboardPage()}
+      {view === 'dashboard' && user && user.role === 'student' && isStudentDashboardRoute && (
+        <StudentDashboardPage
+          user={user}
+          dashboardMetrics={dashboardMetrics}
+          courses={courses}
+          enrollments={enrollments}
+          checkoutLoading={checkoutLoading}
+          formatMoney={formatMoney}
+          handleEnrollment={handleEnrollment}
+          logout={logout}
+        />
+      )}
 
       {['admin', 'super_admin'].includes(user?.role) && (isAdminDashboardRoute || isAdminPaymentsRoute || isAdminCatalogRoute || isOwnerRoute || isAdminLessonsRoute) && (
         <div className="admin-workspace-shell">
@@ -1949,11 +1317,11 @@ function App() {
           </aside>
 
           <div className="admin-page-content">
-            {isAdminDashboardRoute && renderAdminDashboardPage()}
-            {isAdminPaymentsRoute && renderAdminPaymentsPage()}
-            {isAdminCatalogRoute && renderAdminCatalogPage()}
-            {isOwnerRoute && renderOwnerControlsPage()}
-            {isAdminLessonsRoute && renderAdminLessonsPage()}
+            {isAdminDashboardRoute && <AdminDashboardPage user={user} dashboardMetrics={dashboardMetrics} adminCourses={adminCourses} adminEnrollments={adminEnrollments} navigate={navigate} logout={logout} />}
+            {isAdminPaymentsRoute && <AdminPaymentsPage adminEnrollments={adminEnrollments} formatMoney={formatMoney} approveEnrollment={approveEnrollment} />}
+            {isAdminCatalogRoute && <AdminCatalogPage courseForm={courseForm} uploadingThumbnail={uploadingThumbnail} uploadingSyllabus={uploadingSyllabus} editingCourseId={editingCourseId} adminCourses={adminCourses} saveCourse={saveCourse} handleCourseChange={handleCourseChange} handleThumbnailUpload={handleThumbnailUpload} handleSyllabusUpload={handleSyllabusUpload} resetCourseForm={resetCourseForm} editCourse={editCourse} navigate={navigate} archiveCourse={archiveCourse} />}
+            {isOwnerRoute && <OwnerControlsPage adminUsers={adminUsers} handleRoleChange={handleRoleChange} handleDeleteUser={handleDeleteUser} />}
+            {isAdminLessonsRoute && <AdminLessonsPage selectedAdminCourse={selectedAdminCourse} lessonForm={lessonForm} moduleForm={moduleForm} editingLessonId={editingLessonId} editingModuleId={editingModuleId} uploadingFile={uploadingFile} handleLessonChange={handleLessonChange} handleModuleChange={handleModuleChange} handleLessonFileUpload={handleLessonFileUpload} saveLesson={saveLesson} saveModule={saveModule} resetLessonForm={resetLessonForm} resetModuleForm={resetModuleForm} editModule={editModule} editLesson={editLesson} deleteLesson={deleteLesson} navigate={navigate} />}
           </div>
         </div>
       )}

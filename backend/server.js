@@ -452,7 +452,8 @@ app.patch('/api/v1/progress/:courseId', requireAuth, async (req, res) => {
     if (!hasAccess && !user.enrolledCourses.includes(course._id.toString()) && !user.enrolledCourses.includes(course.slug)) {
       return res.status(403).json({ message: 'Enrollment required to update course progress.' });
     }
-    if (!course.lessons.some((lesson) => lesson._id.toString() === lessonId)) {
+    const courseLessons = [course.lessons || [], ...(course.modules || []).map((module) => module.lessons || [])].flat();
+    if (!courseLessons.some((lesson) => lesson._id.toString() === lessonId)) {
       return res.status(404).json({ message: 'Lesson not found.' });
     }
 
@@ -469,12 +470,56 @@ app.patch('/api/v1/progress/:courseId', requireAuth, async (req, res) => {
   const course = courses.find((item) => item.id === courseId || item.slug === courseId);
   const hasAccess = course && (enrollments.some((enrollment) => enrollment.userId === req.user.id && enrollment.courseId === course.id && enrollment.status === 'approved') || user.enrolledCourses.includes(course.id));
   if (!hasAccess) return res.status(403).json({ message: 'Enrollment required to update course progress.' });
-  if (!course.lessons.some((lesson) => (lesson.id || lesson._id) === lessonId)) {
+  const courseLessons = [course.lessons || [], ...(course.modules || []).map((module) => module.lessons || [])].flat();
+  if (!courseLessons.some((lesson) => (lesson.id || lesson._id) === lessonId)) {
     return res.status(404).json({ message: 'Lesson not found.' });
   }
 
   const progress = updateUserProgressForCourse(user, courseId, lessonId, Boolean(completed));
   return res.json({ progress, message: completed ? 'Lesson marked complete.' : 'Lesson marked incomplete.' });
+});
+
+app.post('/api/v1/courses/:courseId/lessons/:lessonId/quiz/submit', requireAuth, async (req, res) => {
+  const answers = Array.isArray(req.body?.answers) ? req.body.answers : [];
+  let course;
+  let user;
+
+  if (databaseReady) {
+    user = await User.findById(req.user.id);
+    course = await Course.findOne({ $or: [{ _id: req.params.courseId }, { slug: req.params.courseId }] });
+  } else {
+    user = findUserById(req.user.id);
+    course = courses.find((item) => item.id === req.params.courseId || item.slug === req.params.courseId);
+  }
+
+  if (!user) return res.status(404).json({ message: 'User could not be found.' });
+  if (!course) return res.status(404).json({ message: 'Course not found.' });
+
+  const storedCourseId = databaseReady ? course._id.toString() : course.id;
+  const hasAccess = databaseReady
+    ? await Enrollment.exists({ userId: req.user.id, courseId: storedCourseId, status: 'approved', paid: true })
+    : enrollments.some((enrollment) => enrollment.userId === req.user.id && enrollment.courseId === storedCourseId && enrollment.status === 'approved');
+  if (!hasAccess && !user.enrolledCourses.includes(storedCourseId) && !user.enrolledCourses.includes(course.slug)) {
+    return res.status(403).json({ message: 'Enrollment required to submit this quiz.' });
+  }
+
+  const lessonCollections = [course.lessons || [], ...(course.modules || []).map((module) => module.lessons || [])];
+  const lesson = lessonCollections.flat().find((item) => String(item._id || item.id) === String(req.params.lessonId));
+  if (!lesson) return res.status(404).json({ message: 'Lesson not found.' });
+  if (lesson.type !== 'quiz') return res.status(400).json({ message: 'This lesson is not a quiz.' });
+  if (!lesson.questions?.length) return res.status(400).json({ message: 'This quiz has no questions yet.' });
+
+  const score = lesson.questions.reduce((total, question, index) => total + (Number(answers[index]) === question.answerIndex ? 1 : 0), 0);
+  const percent = Math.round((score / lesson.questions.length) * 100);
+  const passed = percent >= 70;
+
+  if (passed) {
+    const progress = updateUserProgressForCourse(user, storedCourseId, String(lesson._id || lesson.id), true);
+    if (databaseReady) await user.save();
+    return res.json({ score, total: lesson.questions.length, percent, passed, progress, message: 'Quiz passed and lesson completed.' });
+  }
+
+  return res.json({ score, total: lesson.questions.length, percent, passed, message: 'Quiz submitted. Review the material and try again.' });
 });
 
 app.put('/api/v1/auth/profile', requireAuth, async (req, res) => {
@@ -595,10 +640,16 @@ const normalizeCourseInput = (input) => ({
   price: Number(input.price),
   currency: String(input.currency || 'NGN').trim().toUpperCase(),
   level: String(input.level || 'Beginner').trim(),
+  targetAudience: String(input.targetAudience || '').trim(),
+  pricingTier: String(input.pricingTier || '').trim(),
+  groupDiscountPercent: Math.min(100, Math.max(0, Number(input.groupDiscountPercent) || 0)),
+  introVideoUrl: String(input.introVideoUrl || '').trim(),
+  syllabusUrl: String(input.syllabusUrl || '').trim(),
   status: ['draft', 'published', 'paused', 'archived'].includes(input.status) ? input.status : 'draft',
   featured: Boolean(input.featured),
   thumbnailUrl: String(input.thumbnailUrl || '').trim(),
   ...(Array.isArray(input.lessons) ? { lessons: input.lessons } : {}),
+  ...(Array.isArray(input.modules) ? { modules: input.modules } : {}),
 });
 
 const validateCourseInput = (course) => {
@@ -611,7 +662,7 @@ const validateCourseInput = (course) => {
 
 const normalizeLessonInput = (input, fallbackOrder = 0) => ({
   title: String(input.title || '').trim(),
-  type: ['video', 'guide', 'quiz'].includes(input.type) ? input.type : 'video',
+  type: ['video', 'guide', 'pdf', 'text', 'quiz', 'assignment'].includes(input.type) ? input.type : 'video',
   contentUrl: String(input.contentUrl || '').trim(),
   contentMimeType: String(input.contentMimeType || '').trim(),
   resourceTitle: String(input.resourceTitle || '').trim(),
@@ -621,12 +672,23 @@ const normalizeLessonInput = (input, fallbackOrder = 0) => ({
   duration: String(input.duration || '').trim(),
   order: Number.isFinite(Number(input.order)) ? Number(input.order) : fallbackOrder,
   isPreview: Boolean(input.isPreview),
+  required: input.required !== false,
+  questions: Array.isArray(input.questions)
+    ? input.questions.map((question) => ({
+      prompt: String(question.prompt || '').trim(),
+      options: Array.isArray(question.options) ? question.options.map((option) => String(option || '').trim()).filter(Boolean) : [],
+      answerIndex: Math.max(0, Number.isInteger(Number(question.answerIndex)) ? Number(question.answerIndex) : 0),
+    })).filter((question) => question.prompt && question.options.length >= 2)
+    : [],
 });
 
 const validateLessonInput = (lesson) => {
   if (!lesson.title) return 'A lesson title is required.';
   if (!Number.isInteger(lesson.week) || lesson.week < 1) return 'Week must be a positive whole number.';
   if (!Number.isInteger(lesson.day) || lesson.day < 1) return 'Day must be a positive whole number.';
+  if (lesson.type === 'quiz' && lesson.questions.some((question) => question.answerIndex >= question.options.length)) {
+    return 'Each quiz answer must point to an available option.';
+  }
   return null;
 };
 
@@ -787,6 +849,12 @@ app.get('/api/v1/courses', async (req, res) => {
       status: course.status,
       featured: course.featured,
       thumbnailUrl: course.thumbnailUrl,
+      targetAudience: course.targetAudience,
+      pricingTier: course.pricingTier,
+      groupDiscountPercent: course.groupDiscountPercent,
+      introVideoUrl: course.introVideoUrl,
+      syllabusUrl: course.syllabusUrl,
+      modules: course.modules,
     }));
 
     return res.json({ courses: payload.length ? payload : defaultCourses });
@@ -816,6 +884,12 @@ app.get('/api/v1/courses/:courseId', async (req, res) => {
         price: course.price,
         currency: course.currency,
         level: course.level,
+        targetAudience: course.targetAudience,
+        pricingTier: course.pricingTier,
+        groupDiscountPercent: course.groupDiscountPercent,
+        introVideoUrl: course.introVideoUrl,
+        syllabusUrl: course.syllabusUrl,
+        modules: course.modules,
       },
     });
   }
@@ -856,6 +930,7 @@ app.get('/api/v1/courses/:courseId/lessons', requireAuth, async (req, res) => {
       courseId: course._id.toString(),
       title: course.title,
       lessons: course.lessons,
+      modules: course.modules,
     });
   }
 
@@ -878,6 +953,7 @@ app.get('/api/v1/courses/:courseId/lessons', requireAuth, async (req, res) => {
     courseId: course.id,
     title: course.title,
     lessons: course.lessons,
+    modules: course.modules || [],
   });
 });
 
@@ -1067,7 +1143,7 @@ app.get('/api/v1/payments/verify/:reference', requireAuth, async (req, res) => {
 
   const transactionStatus = String(payload.data.status || '').toLowerCase();
   const paymentStatus = transactionStatus === 'success'
-    ? 'paid_pending_approval'
+    ? 'approved'
     : ['failed', 'abandoned', 'reversed'].includes(transactionStatus)
       ? 'failed'
       : 'pending_payment';
@@ -1082,14 +1158,14 @@ app.get('/api/v1/payments/verify/:reference', requireAuth, async (req, res) => {
       ? 'Payment is still pending with Paystack.'
       : 'Payment verified and course access activated.';
 
-  const activatedStatus = paymentStatus === 'paid_pending_approval' ? 'approved' : paymentStatus;
+  const activatedStatus = paymentStatus;
 
   if (databaseReady) {
     const updateResult = await Enrollment.updateOne(
       { paymentReference: req.params.reference, userId: req.user.id },
       {
         $set: {
-          paid: paymentStatus === 'paid_pending_approval',
+          paid: activatedStatus === 'approved',
           status: activatedStatus,
           ...(activatedStatus === 'approved' ? { approvedAt: new Date(), approvedBy: 'paystack-verify' } : {}),
         },
@@ -1100,7 +1176,7 @@ app.get('/api/v1/payments/verify/:reference', requireAuth, async (req, res) => {
     }
   } else {
     enrollment.status = activatedStatus;
-    enrollment.paid = paymentStatus === 'paid_pending_approval';
+    enrollment.paid = activatedStatus === 'approved';
     if (activatedStatus === 'approved') {
       enrollment.approvedAt = new Date().toISOString();
       enrollment.approvedBy = 'paystack-verify';
