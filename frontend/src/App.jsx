@@ -831,6 +831,7 @@ function App() {
   const isAdminLessonsRoute = routeSegments[0] === 'admin' && routeSegments[1] === 'courses' && routeSegments.length === 4 && routeSegments[3] === 'lessons';
   const isStudentPortalActive = isStudentDashboardRoute || isMyCoursesRoute || isCourseLearnRoute;
   const isAdminPortalActive = isAdminDashboardRoute || isAdminPaymentsRoute || isAdminCatalogRoute || isOwnerRoute || isAdminLessonsRoute;
+  const isWorkspaceRoute = isStudentPortalActive || isAdminPortalActive;
 
   const selectedCourseSlug = isCourseDetailRoute || isCourseLearnRoute ? routeSegments[1] : '';
   const selectedCourse = courses.find((course) => course.slug === selectedCourseSlug || course.id === selectedCourseSlug) || adminCourses.find((course) => course.slug === selectedCourseSlug || course.id === selectedCourseSlug) || null;
@@ -1709,45 +1710,41 @@ function App() {
 
   return (
     <div className="page-shell">
-      <header className="topbar">
-        <div className="brand-wrap">
-          <div className="brand-mark">GDS</div>
-          <div>
-            <p className="eyebrow">GDS TICKETING</p>
-            <h2>Student Academy</h2>
+      {!isWorkspaceRoute && (
+        <header className="topbar">
+          <div className="brand-wrap">
+            <div className="brand-mark">GDS</div>
+            <div>
+              <p className="eyebrow">GDS TICKETING</p>
+              <h2>Student Academy</h2>
+            </div>
           </div>
-        </div>
 
-        <nav className="nav">
-          <button type="button" className={`nav-btn ${isLandingRoute ? 'active' : ''}`} onClick={() => navigate('/')}>Home</button>
-          <button type="button" className={`nav-btn ${isCatalogRoute || isCourseDetailRoute ? 'active' : ''}`} onClick={() => navigate('/courses')}>Courses</button>
-          {user ? (
-            <>
-              <button type="button" className={`nav-btn ${user.role === 'student' ? (isStudentPortalActive ? 'active' : '') : (isAdminPortalActive ? 'active' : '')}`} onClick={() => navigate(user.role === 'student' ? '/dashboard' : '/admin')}>Dashboard</button>
-              {user.role === 'student' && <button type="button" className={`nav-btn ${isMyCoursesRoute || isCourseLearnRoute ? 'active' : ''}`} onClick={() => navigate('/dashboard/my-courses')}>My courses</button>}
-              {['admin', 'super_admin'].includes(user.role) && <button type="button" className={`nav-btn ${isAdminPaymentsRoute ? 'active' : ''}`} onClick={() => navigate('/admin/payments')}>Payments</button>}
-              {user.role === 'super_admin' && <button type="button" className={`nav-btn ${isOwnerRoute ? 'active' : ''}`} onClick={() => navigate('/owner')}>Owner</button>}
-              <button type="button" className="nav-btn" onClick={logout}>Logout</button>
-            </>
-          ) : (
-            <>
-              <button type="button" className={`nav-btn ${isLoginRoute ? 'active' : ''}`} onClick={() => { setAuthMode('login'); navigate('/login'); }}>Login</button>
-              <button type="button" className={`nav-btn ${isRegisterRoute ? 'active' : ''}`} onClick={() => { setAuthMode('register'); navigate('/register'); }}>Register</button>
-            </>
-          )}
-        </nav>
-      </header>
+          <nav className="nav">
+            <button type="button" className={`nav-btn ${isLandingRoute ? 'active' : ''}`} onClick={() => navigate('/')}>Home</button>
+            <button type="button" className={`nav-btn ${isCatalogRoute || isCourseDetailRoute ? 'active' : ''}`} onClick={() => navigate('/courses')}>Courses</button>
+            {user ? (
+              <>
+                <button type="button" className={`nav-btn ${user.role === 'student' ? '' : ''}`} onClick={() => navigate(user.role === 'student' ? '/dashboard' : '/admin')}>Dashboard</button>
+                {user.role === 'student' && <button type="button" className="nav-btn" onClick={() => navigate('/dashboard/my-courses')}>My courses</button>}
+                {['admin', 'super_admin'].includes(user.role) && <button type="button" className="nav-btn" onClick={() => navigate('/admin/payments')}>Payments</button>}
+                {user.role === 'super_admin' && <button type="button" className="nav-btn" onClick={() => navigate('/owner')}>Owner</button>}
+                <button type="button" className="nav-btn" onClick={logout}>Logout</button>
+              </>
+            ) : (
+              <>
+                <button type="button" className={`nav-btn ${isLoginRoute ? 'active' : ''}`} onClick={() => { setAuthMode('login'); navigate('/login'); }}>Login</button>
+                <button type="button" className={`nav-btn ${isRegisterRoute ? 'active' : ''}`} onClick={() => { setAuthMode('register'); navigate('/register'); }}>Register</button>
+              </>
+            )}
+          </nav>
+        </header>
+      )}
 
       {isCatalogRoute && renderCourseCatalogPage()}
       {isCourseDetailRoute && renderCourseDetailPage()}
-      {isStudentDashboardRoute && renderStudentDashboardPage()}
       {isMyCoursesRoute && renderMyCoursesPage()}
       {isCourseLearnRoute && renderLearningPage()}
-      {isAdminDashboardRoute && renderAdminDashboardPage()}
-      {isAdminPaymentsRoute && renderAdminPaymentsPage()}
-      {isAdminCatalogRoute && renderAdminCatalogPage()}
-      {isOwnerRoute && renderOwnerControlsPage()}
-      {isAdminLessonsRoute && renderAdminLessonsPage()}
 
       {isLandingRoute && (
         <>
