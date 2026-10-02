@@ -1,9 +1,19 @@
-const formatMoney = (amount) =>
-  new Intl.NumberFormat('en-NG', {
+const formatMoney = (amount, currency = 'NGN') => {
+  const normalizedCurrency = String(currency || 'NGN').trim().toUpperCase();
+  const localeMap = {
+    NGN: { locale: 'en-NG', currency: 'NGN' },
+    USD: { locale: 'en-US', currency: 'USD' },
+    GBP: { locale: 'en-GB', currency: 'GBP' },
+    EUR: { locale: 'en-IE', currency: 'EUR' },
+  };
+  const config = localeMap[normalizedCurrency] || localeMap.NGN;
+
+  return new Intl.NumberFormat(config.locale, {
     style: 'currency',
-    currency: 'NGN',
-    maximumFractionDigits: 0,
+    currency: config.currency,
+    maximumFractionDigits: normalizedCurrency === 'NGN' ? 0 : 2,
   }).format(amount || 0);
+};
 
 export function CourseCatalogPage({ courses, displayCourses, navigate }) {
   return (
@@ -20,7 +30,7 @@ export function CourseCatalogPage({ courses, displayCourses, navigate }) {
           <article key={course.id || course.slug} className="pricing-card">
             {course.thumbnailUrl && <img className="course-card-image" src={course.thumbnailUrl} alt="" />}
             <p className="card-name">{course.title}</p>
-            <h3>{course.displayPrice || formatMoney(course.price)}</h3>
+            <h3>{course.displayPrice || formatMoney(course.price, course.currency || 'NGN')}</h3>
             <p className="card-copy">{course.description}</p>
             <ul>
               {[
@@ -40,7 +50,7 @@ export function CourseCatalogPage({ courses, displayCourses, navigate }) {
   );
 }
 
-export function CourseDetailPage({ selectedCourse, formatMoney, handleEnrollment, navigate }) {
+export function CourseDetailPage({ selectedCourse, formatMoney, handleEnrollment, navigate, selectedCourseAccessState }) {
   if (!selectedCourse) {
     return (
       <section className="page-section">
@@ -54,6 +64,38 @@ export function CourseDetailPage({ selectedCourse, formatMoney, handleEnrollment
     ...(selectedCourse.lessons || []),
     ...(selectedCourse.modules || []).flatMap((module) => module.lessons || []),
   ];
+
+  const accessStatusText = selectedCourseAccessState?.isApproved
+    ? 'Your access is already approved. Continue learning whenever you are ready.'
+    : selectedCourseAccessState?.status === 'paid_pending_approval'
+      ? 'Your payment is confirmed and waiting for admin approval.'
+      : selectedCourseAccessState?.status === 'pending_payment'
+        ? 'Your enrollment is already in progress. Please complete checkout to continue.'
+        : selectedCourseAccessState?.status === 'failed'
+          ? 'Your last payment did not complete. You can trigger a fresh checkout.'
+          : 'Access is granted after successful payment and admin approval.';
+
+  const isEnrollmentActionBlocked = Boolean(selectedCourseAccessState && !selectedCourseAccessState.isFailed);
+  const primaryActionLabel = selectedCourseAccessState?.isApproved
+    ? 'Continue learning'
+    : selectedCourseAccessState?.status === 'paid_pending_approval'
+      ? 'Awaiting approval'
+      : selectedCourseAccessState?.status === 'pending_payment'
+        ? 'Checkout pending'
+        : selectedCourseAccessState?.status === 'failed'
+          ? 'Retry enrollment'
+          : 'Enroll now';
+
+  const handlePrimaryAction = () => {
+    if (selectedCourseAccessState?.isApproved) {
+      navigate(`/courses/${selectedCourse.slug || selectedCourse.id}/learn`);
+      return;
+    }
+    if (selectedCourseAccessState && !selectedCourseAccessState.isFailed) {
+      return;
+    }
+    handleEnrollment(selectedCourse);
+  };
 
   return (
     <section className="page-section">
@@ -73,16 +115,17 @@ export function CourseDetailPage({ selectedCourse, formatMoney, handleEnrollment
           <div className="course-detail-meta">
             <span>{selectedCourse.duration || '4 weeks'}</span>
             <span>{selectedCourse.level || 'Beginner'}</span>
-            <span>{formatMoney(selectedCourse.price || 0)}</span>
+            <span>{formatMoney(selectedCourse.price || 0, selectedCourse.currency || 'NGN')}</span>
           </div>
           <div className="cta-row">
-            <button type="button" className="primary-btn" onClick={() => handleEnrollment(selectedCourse)}>
-              Enroll now
+            <button type="button" className="primary-btn" onClick={handlePrimaryAction} disabled={isEnrollmentActionBlocked && !selectedCourseAccessState?.isFailed}>
+              {primaryActionLabel}
             </button>
             <button type="button" className="secondary-btn" onClick={() => navigate('/courses')}>
               Back to catalog
             </button>
           </div>
+          <p className="field-hint">{accessStatusText}</p>
           <div className="learning-outline">
             <h3>Course structure</h3>
             <ul>

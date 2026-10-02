@@ -44,37 +44,123 @@ const users = [];
 
 const defaultCourses = [
   {
-    id: 'sabre-core',
-    slug: 'sabre-core',
-    title: 'Sabre Core Ticketing',
+    id: 'aviation-ota-foundations',
+    slug: 'aviation-ota-foundations',
+    title: 'Aviation & OTA Foundations',
     duration: '4 weeks',
     price: 45000,
     currency: 'NGN',
     level: 'Beginner',
     status: 'published',
     featured: false,
-    description: 'Learn the fundamentals of GDS ticketing, PNR creation, and fare handling.',
+    description: 'Learn aviation phonetics, airline codes, airport geography, safe OTA booking steps, and the travel-tech fundamentals behind modern mobility businesses.',
     lessons: [
-      { id: 'lesson-1', title: 'Intro to GDS and Sabre workflow', type: 'video' },
-      { id: 'lesson-2', title: 'PNR creation and passenger data', type: 'guide' },
-      { id: 'lesson-3', title: 'Ticketing essentials and issuance', type: 'quiz' },
+      { id: 'lesson-1', title: 'Aviation phonetics and airline codes', type: 'video', duration: '18 min', order: 1 },
+      { id: 'lesson-2', title: 'Airport geography and route awareness', type: 'guide', duration: '22 min', order: 2 },
+      { id: 'lesson-3', title: 'OTA booking flow and scam prevention', type: 'quiz', duration: '15 min', order: 3 },
+    ],
+    modules: [
+      {
+        id: 'module-1',
+        title: 'Module 1: Aviation language and route awareness',
+        description: 'Understand aviation alphabet, airline codes, and route intelligence used by travel professionals.',
+        order: 1,
+        unlockMode: 'immediate',
+        unlockAfterDays: 0,
+        assessmentRequired: false,
+        lessons: [
+          { id: 'm1-lesson-1', title: 'Aviation alphabet and pronunciation', type: 'video', duration: '18 min', order: 1 },
+          { id: 'm1-lesson-2', title: 'Airline codes and IATA basics', type: 'guide', duration: '16 min', order: 2 },
+          { id: 'm1-lesson-3', title: 'Airport geography by region', type: 'text', duration: '12 min', order: 3 },
+        ],
+      },
+      {
+        id: 'module-2',
+        title: 'Module 2: OTA booking fundamentals',
+        description: 'Learn how digital travel bookings work, what to check before paying, and how to avoid booking fraud.',
+        order: 2,
+        unlockMode: 'immediate',
+        unlockAfterDays: 0,
+        assessmentRequired: false,
+        lessons: [
+          { id: 'm2-lesson-1', title: 'How online travel bookings are built', type: 'video', duration: '20 min', order: 1 },
+          { id: 'm2-lesson-2', title: 'Flight search, fare comparison and rules', type: 'guide', duration: '18 min', order: 2 },
+          { id: 'm2-lesson-3', title: 'Payment safety and scam awareness', type: 'quiz', duration: '14 min', order: 3 },
+        ],
+      },
+      {
+        id: 'module-3',
+        title: 'Module 3: GDS and ticketing foundations',
+        description: 'Build the bridge from booking knowledge to global distribution system operations and travel ticketing logic.',
+        order: 3,
+        unlockMode: 'immediate',
+        unlockAfterDays: 0,
+        assessmentRequired: true,
+        lessons: [
+          { id: 'm3-lesson-1', title: 'What GDS platforms do', type: 'video', duration: '20 min', order: 1 },
+          { id: 'm3-lesson-2', title: 'PNR basics and booking records', type: 'guide', duration: '22 min', order: 2 },
+          { id: 'm3-lesson-3', title: 'Ticketing logic and issuance concepts', type: 'assignment', duration: '25 min', order: 3 },
+        ],
+      },
+      {
+        id: 'module-4',
+        title: 'Module 4: Practice and industry readiness',
+        description: 'Turn your understanding into repeatable practice and a stronger plan for travel-sector careers.',
+        order: 4,
+        unlockMode: 'immediate',
+        unlockAfterDays: 0,
+        assessmentRequired: true,
+        lessons: [
+          { id: 'm4-lesson-1', title: 'Practice review and workflow recap', type: 'text', duration: '15 min', order: 1 },
+          { id: 'm4-lesson-2', title: 'Agency simulation checklist', type: 'guide', duration: '18 min', order: 2 },
+          { id: 'm4-lesson-3', title: 'Career path planning and next steps', type: 'video', duration: '12 min', order: 3 },
+        ],
+      },
     ],
   },
   {
-    id: 'agency-ready',
-    slug: 'agency-ready',
-    title: 'Agency Ready Bootcamp',
+    id: 'career-studio',
+    slug: 'career-studio',
+    title: 'Career Studio',
     duration: '6 weeks',
     price: 75000,
     currency: 'NGN',
     level: 'Advanced',
     status: 'published',
     featured: true,
-    description: 'A practical career pathway for students who want real booking and support workflows.',
+    description: 'A practical progression track for learners ready to move from travel knowledge into GDS, ticketing logic, and agency-style operations.',
     lessons: [
-      { id: 'lesson-4', title: 'Advanced itinerary building', type: 'video' },
-      { id: 'lesson-5', title: 'Fare rules and amendments', type: 'guide' },
-      { id: 'lesson-6', title: 'Real-world agency simulation', type: 'quiz' },
+      { id: 'lesson-4', title: 'GDS introductions and travel workflows', type: 'video', duration: '20 min', order: 1 },
+      { id: 'lesson-5', title: 'Ticketing logic and booking practice', type: 'guide', duration: '18 min', order: 2 },
+      { id: 'lesson-6', title: 'Real-world agency simulation', type: 'quiz', duration: '25 min', order: 3 },
+    ],
+    modules: [
+      {
+        id: 'career-module-1',
+        title: 'Module 1: GDS operations overview',
+        description: 'Move from foundations into operational travel systems and agency-style processes.',
+        order: 1,
+        unlockMode: 'immediate',
+        unlockAfterDays: 0,
+        assessmentRequired: false,
+        lessons: [
+          { id: 'career-m1-1', title: 'What GDS systems are used for', type: 'video', duration: '18 min', order: 1 },
+          { id: 'career-m1-2', title: 'Travel workflow map', type: 'guide', duration: '14 min', order: 2 },
+        ],
+      },
+      {
+        id: 'career-module-2',
+        title: 'Module 2: Booking and support scenarios',
+        description: 'Practice realistic routing, amendments, and passenger support situations.',
+        order: 2,
+        unlockMode: 'immediate',
+        unlockAfterDays: 0,
+        assessmentRequired: true,
+        lessons: [
+          { id: 'career-m2-1', title: 'Amendment and support flows', type: 'assignment', duration: '22 min', order: 1 },
+          { id: 'career-m2-2', title: 'Checklist for agency operations', type: 'guide', duration: '20 min', order: 2 },
+        ],
+      },
     ],
   },
 ];
@@ -147,7 +233,26 @@ const findUserById = (id) => users.find((user) => user.id === id);
 
 const normalizeCurrency = (currency) => String(currency || '').trim().toUpperCase();
 
+const supportedPaystackCurrencies = new Set(['NGN', 'USD', 'GHS', 'KES', 'ZAR', 'CAD', 'GBP', 'EUR']);
+
+const isSupportedCurrency = (currency) => supportedPaystackCurrencies.has(normalizeCurrency(currency));
+
 const getCourseAmountMinor = (course) => Math.round(Number(course.price) * 100);
+const getSuccessfulEnrollmentStatus = () => 'paid_pending_approval';
+const getApprovedEnrollmentStatus = () => 'approved';
+const hasApprovedCourseAccess = ({
+  courseId = '',
+  courseSlug = '',
+  enrollmentStatus = '',
+  paid = false,
+  userEnrolledCourses = [],
+} = {}) => {
+  const normalizedCourseId = String(courseId || '');
+  const normalizedCourseSlug = String(courseSlug || '');
+  const hasLegacyAccess = Array.isArray(userEnrolledCourses) && userEnrolledCourses.some((entry) => String(entry) === normalizedCourseId || String(entry) === normalizedCourseSlug);
+
+  return (String(enrollmentStatus || '') === getApprovedEnrollmentStatus() && paid) || hasLegacyAccess;
+};
 
 const buildUserPayload = async (userDocument) => {
   if (!userDocument) return null;
@@ -981,7 +1086,13 @@ app.get('/api/v1/courses/:courseId/lessons', requireAuth, async (req, res) => {
       status: 'approved',
       paid: true,
     });
-    const hasAccess = user && (approvedEnrollment || user.enrolledCourses.includes(course._id.toString()) || user.enrolledCourses.includes(course.slug));
+    const hasAccess = hasApprovedCourseAccess({
+      courseId: course._id.toString(),
+      courseSlug: course.slug,
+      enrollmentStatus: approvedEnrollment?.status,
+      paid: approvedEnrollment?.paid,
+      userEnrolledCourses: user?.enrolledCourses || [],
+    });
 
     if (!hasAccess) {
       return res.status(403).json({ message: 'Enrollment required to access this course.' });
@@ -1031,6 +1142,11 @@ app.post('/api/v1/payments/initialize', requireAuth, async (req, res) => {
 
   if (!course) {
     return res.status(404).json({ message: 'Course not found.' });
+  }
+
+  const normalizedCourseCurrency = normalizeCurrency(course.currency || 'NGN');
+  if (!isSupportedCurrency(normalizedCourseCurrency)) {
+    return res.status(400).json({ message: `Unsupported course currency: ${normalizedCourseCurrency}. Supported values include NGN, USD, GBP, EUR, GHS, KES, ZAR, and CAD.` });
   }
 
   if (!process.env.PAYSTACK_SECRET_KEY) {
@@ -1148,15 +1264,14 @@ app.post('/api/v1/payments/webhook', async (req, res) => {
 
     await Enrollment.updateOne(
       { _id: enrollment._id },
-      { $set: { paid: true, status: 'approved', approvedAt: new Date(), approvedBy: 'paystack-webhook' } }
+      { $set: { paid: true, status: getSuccessfulEnrollmentStatus(), approvedAt: new Date(), approvedBy: 'paystack-webhook' } }
     );
     const user = await User.findById(enrollment.userId);
-    if (user && !user.enrolledCourses.includes(enrollment.courseId)) {
-      user.enrolledCourses.push(enrollment.courseId);
+    if (user) {
       user.paymentStatus = true;
       await user.save();
     }
-    return res.json({ message: 'Payment received and course access activated.', reference });
+    return res.json({ message: 'Payment received. Course access is pending admin approval.', reference });
   }
 
   const enrollment = enrollments.find((item) => item.paymentReference === reference);
@@ -1169,17 +1284,16 @@ app.post('/api/v1/payments/webhook', async (req, res) => {
     return res.status(400).json({ message: 'Paystack amount or currency does not match the course.' });
   }
 
-  enrollment.status = 'approved';
+  enrollment.status = getSuccessfulEnrollmentStatus();
   enrollment.paid = true;
   enrollment.approvedAt = new Date().toISOString();
   enrollment.approvedBy = 'paystack-webhook';
   const user = findUserById(enrollment.userId);
-  if (user && !user.enrolledCourses.includes(enrollment.courseId)) {
-    user.enrolledCourses.push(enrollment.courseId);
+  if (user) {
     user.paymentStatus = true;
   }
 
-  return res.json({ message: 'Payment received and course access activated.', reference });
+  return res.json({ message: 'Payment received. Course access is pending admin approval.', reference });
 });
 
 app.get('/api/v1/payments/verify/:reference', requireAuth, async (req, res) => {
@@ -1211,7 +1325,7 @@ app.get('/api/v1/payments/verify/:reference', requireAuth, async (req, res) => {
 
   const transactionStatus = String(payload.data.status || '').toLowerCase();
   const paymentStatus = transactionStatus === 'success'
-    ? 'approved'
+    ? getSuccessfulEnrollmentStatus()
     : ['failed', 'abandoned', 'reversed'].includes(transactionStatus)
       ? 'failed'
       : 'pending_payment';
@@ -1224,7 +1338,7 @@ app.get('/api/v1/payments/verify/:reference', requireAuth, async (req, res) => {
     ? 'Payment failed. You can try checkout again.'
     : paymentStatus === 'pending_payment'
       ? 'Payment is still pending with Paystack.'
-      : 'Payment verified and course access activated.';
+      : 'Payment verified. Course access is pending admin approval.';
 
   const activatedStatus = paymentStatus;
 
@@ -1233,9 +1347,9 @@ app.get('/api/v1/payments/verify/:reference', requireAuth, async (req, res) => {
       { paymentReference: req.params.reference, userId: req.user.id },
       {
         $set: {
-          paid: activatedStatus === 'approved',
+          paid: activatedStatus === 'paid_pending_approval' || activatedStatus === 'approved',
           status: activatedStatus,
-          ...(activatedStatus === 'approved' ? { approvedAt: new Date(), approvedBy: 'paystack-verify' } : {}),
+          ...(activatedStatus === 'paid_pending_approval' || activatedStatus === 'approved' ? { approvedAt: new Date(), approvedBy: 'paystack-verify' } : {}),
         },
       }
     );
@@ -1244,27 +1358,23 @@ app.get('/api/v1/payments/verify/:reference', requireAuth, async (req, res) => {
     }
   } else {
     enrollment.status = activatedStatus;
-    enrollment.paid = activatedStatus === 'approved';
-    if (activatedStatus === 'approved') {
+    enrollment.paid = activatedStatus === 'paid_pending_approval' || activatedStatus === 'approved';
+    if (activatedStatus === 'paid_pending_approval' || activatedStatus === 'approved') {
       enrollment.approvedAt = new Date().toISOString();
       enrollment.approvedBy = 'paystack-verify';
     }
   }
 
-  if (activatedStatus === 'approved') {
-    if (databaseReady) {
-      const user = await User.findById(req.user.id);
-      if (user && !user.enrolledCourses.includes(enrollment.courseId)) {
-        user.enrolledCourses.push(enrollment.courseId);
-        user.paymentStatus = true;
-        await user.save();
-      }
-    } else {
-      const user = findUserById(req.user.id);
-      if (user && !user.enrolledCourses.includes(enrollment.courseId)) {
-        user.enrolledCourses.push(enrollment.courseId);
-        user.paymentStatus = true;
-      }
+  if (databaseReady) {
+    const user = await User.findById(req.user.id);
+    if (user) {
+      user.paymentStatus = true;
+      await user.save();
+    }
+  } else {
+    const user = findUserById(req.user.id);
+    if (user) {
+      user.paymentStatus = true;
     }
   }
 
@@ -1345,14 +1455,16 @@ app.patch('/api/v1/admin/enrollments/:enrollmentId/approve', requireAuth, requir
     const user = await User.findById(enrollment.userId);
     if (!user) return res.status(404).json({ message: 'Student account was not found.' });
 
-    enrollment.status = 'approved';
+    enrollment.status = getApprovedEnrollmentStatus();
+    enrollment.paid = true;
     enrollment.approvedAt = new Date();
     enrollment.approvedBy = req.user.id;
     await enrollment.save();
     if (!user.enrolledCourses.includes(enrollment.courseId)) {
       user.enrolledCourses.push(enrollment.courseId);
-      await user.save();
     }
+    user.paymentStatus = true;
+    await user.save();
     return res.json({ message: 'Course access approved.', enrollmentId: enrollment._id.toString() });
   }
 
@@ -1361,10 +1473,12 @@ app.patch('/api/v1/admin/enrollments/:enrollmentId/approve', requireAuth, requir
   const user = findUserById(enrollment.userId);
   if (!user) return res.status(404).json({ message: 'Student account was not found.' });
 
-  enrollment.status = 'approved';
+  enrollment.status = getApprovedEnrollmentStatus();
+  enrollment.paid = true;
   enrollment.approvedAt = new Date().toISOString();
   enrollment.approvedBy = req.user.id;
   if (!user.enrolledCourses.includes(enrollment.courseId)) user.enrolledCourses.push(enrollment.courseId);
+  user.paymentStatus = true;
   return res.json({ message: 'Course access approved.', enrollmentId: enrollment.id });
 });
 
@@ -1421,20 +1535,31 @@ const ensureSuperAdmin = async () => {
   });
 };
 
-connectDB().then(async (connected) => {
-  if (process.env.NODE_ENV === 'production' && (!connected || !process.env.JWT_SECRET || !process.env.PAYSTACK_SECRET_KEY)) {
-    console.error('Production startup blocked: MongoDB, JWT_SECRET, and PAYSTACK_SECRET_KEY are required.');
-    process.exit(1);
-  }
-
-  databaseReady = connected;
-  await ensureSuperAdmin();
-  app.listen(port, () => {
-    if (connected) {
-      console.log('MongoDB connected successfully.');
-    } else {
-      console.log('MongoDB URI not configured. Continuing with in-memory storage for local development.');
+if (require.main === module) {
+  connectDB().then(async (connected) => {
+    if (process.env.NODE_ENV === 'production' && (!connected || !process.env.JWT_SECRET || !process.env.PAYSTACK_SECRET_KEY)) {
+      console.error('Production startup blocked: MongoDB, JWT_SECRET, and PAYSTACK_SECRET_KEY are required.');
+      process.exit(1);
     }
-    console.log(`GDS Ticketing API listening on http://localhost:${port}`);
+
+    databaseReady = connected;
+    await ensureSuperAdmin();
+    app.listen(port, () => {
+      if (connected) {
+        console.log('MongoDB connected successfully.');
+      } else {
+        console.log('MongoDB URI not configured. Continuing with in-memory storage for local development.');
+      }
+      console.log(`GDS Ticketing API listening on http://localhost:${port}`);
+    });
   });
-});
+}
+
+module.exports = {
+  app,
+  getSuccessfulEnrollmentStatus,
+  getApprovedEnrollmentStatus,
+  hasApprovedCourseAccess,
+  normalizeCurrency,
+  getCourseAmountMinor,
+};

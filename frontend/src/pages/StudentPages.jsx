@@ -1,4 +1,22 @@
-export function MyCoursesPage({ approvedCourses, courses, formatMoney, navigate }) {
+export function MyCoursesPage({ approvedCourses, pendingCourses, courses, formatMoney, navigate }) {
+  const renderCourseCard = (enrollment, actionLabel, action) => {
+    const course = enrollment.course || courses.find((item) => item.id === enrollment.courseId || item.slug === enrollment.courseId) || null;
+    if (!course) return null;
+
+    return (
+      <article className="pricing-card" key={enrollment.id || enrollment.courseId}>
+        <p className="card-name">{course.title}</p>
+        <h3>{formatMoney(course.price || 0, course.currency || 'NGN')}</h3>
+        <p className="card-copy">{course.description}</p>
+        <button type="button" className="secondary-btn full-width" onClick={action}>
+          {actionLabel}
+        </button>
+      </article>
+    );
+  };
+
+  const hasAnyCourses = approvedCourses.length || pendingCourses.length;
+
   return (
     <section className="page-section">
       <div className="page-intro">
@@ -8,33 +26,51 @@ export function MyCoursesPage({ approvedCourses, courses, formatMoney, navigate 
         </div>
         <span className="page-intro-badge student-badge">Learning access</span>
       </div>
-      <div className="pricing-grid">
-        {approvedCourses.length ? approvedCourses.map((enrollment) => {
-          const course = enrollment.course || courses.find((item) => item.id === enrollment.courseId || item.slug === enrollment.courseId) || null;
-          if (!course) return null;
-          return (
-            <article className="pricing-card" key={enrollment.id || enrollment.courseId}>
-              <p className="card-name">{course.title}</p>
-              <h3>{formatMoney(course.price || 0)}</h3>
-              <p className="card-copy">{course.description}</p>
-              <button type="button" className="secondary-btn full-width" onClick={() => navigate(`/courses/${course.slug || course.id}/learn`)}>
-                Continue learning
-              </button>
-            </article>
-          );
-        }) : (
-          <div className="dashboard-card">
-            <h3>No approved courses yet</h3>
-            <p>Your approved learning access will appear here after payment confirmation and admin approval.</p>
-            <button type="button" className="primary-btn" onClick={() => navigate('/courses')}>Browse courses</button>
-          </div>
-        )}
-      </div>
+
+      {!hasAnyCourses ? (
+        <div className="dashboard-card">
+          <h3>No approved courses yet</h3>
+          <p>Your approved learning access will appear here after payment confirmation and admin approval.</p>
+          <button type="button" className="primary-btn" onClick={() => navigate('/courses')}>Browse courses</button>
+        </div>
+      ) : (
+        <>
+          {approvedCourses.length > 0 && (
+            <div style={{ marginBottom: '1.5rem' }}>
+              <h3>Active learning</h3>
+              <div className="pricing-grid">
+                {approvedCourses.map((enrollment) => {
+                  const course = enrollment.course || courses.find((item) => item.id === enrollment.courseId || item.slug === enrollment.courseId) || null;
+                  if (!course) return null;
+                  return renderCourseCard(enrollment, 'Continue learning', () => navigate(`/courses/${course.slug || course.id}/learn`));
+                })}
+              </div>
+            </div>
+          )}
+
+          {pendingCourses.length > 0 && (
+            <div>
+              <h3>Awaiting approval</h3>
+              <div className="pricing-grid">
+                {pendingCourses.map((enrollment) => {
+                  const course = enrollment.course || courses.find((item) => item.id === enrollment.courseId || item.slug === enrollment.courseId) || null;
+                  if (!course) return null;
+                  const actionLabel = enrollment.status === 'paid_pending_approval' ? 'Awaiting approval' : 'Checkout pending';
+                  return renderCourseCard(enrollment, actionLabel, () => navigate(`/courses/${course.slug || course.id}`));
+                })}
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </section>
   );
 }
 
-export function StudentDashboardPage({ user, dashboardMetrics, courses, enrollments, checkoutLoading, formatMoney, handleEnrollment, logout }) {
+export function StudentDashboardPage({ user, dashboardMetrics, courses, enrollments, checkoutLoading, formatMoney, handleEnrollment, logout, supportChannels }) {
+  const emailLink = supportChannels?.email ? `mailto:${supportChannels.email}` : '#';
+  const whatsappLink = supportChannels?.whatsapp || '#';
+
   return (
     <section className="dashboard-shell student-dashboard-shell">
       <div className="page-intro">
@@ -62,6 +98,41 @@ export function StudentDashboardPage({ user, dashboardMetrics, courses, enrollme
       </div>
 
       <div className="dashboard-card">
+        <h3>{enrollments.some((item) => item.status === 'approved') ? 'Your learning access is ready' : 'Your learning access is almost ready'}</h3>
+        <p>
+          {enrollments.some((item) => item.status === 'approved')
+            ? 'You can begin the training immediately. Start with your first lesson and complete the guided practice tasks to build confidence.'
+            : 'Complete the payment and wait for admin approval. Once approved, your course portal will unlock and your dashboard will update instantly.'}
+        </p>
+        <ul>
+          {enrollments.some((item) => item.status === 'approved') ? (
+            <>
+              <li>Open your first approved course and review the learning path.</li>
+              <li>Complete the first lesson and mark it as done.</li>
+              <li>Submit the quiz and review the practical tasks in the module.</li>
+            </>
+          ) : (
+            <>
+              <li>Finish the pending payment step if needed.</li>
+              <li>Wait for the admin approval email or portal update.</li>
+              <li>Return to the dashboard to open the course after approval.</li>
+            </>
+          )}
+        </ul>
+      </div>
+
+      <div className="dashboard-card">
+        <h3>Student support</h3>
+        <p>Need help with your enrollment, course access, or onboarding? Contact the support team through the official support channels below.</p>
+        <ul>
+          <li>WhatsApp: <a href={whatsappLink} target="_blank" rel="noreferrer">{supportChannels?.phone || 'WhatsApp support'}</a></li>
+          <li>Email: <a href={emailLink}>{supportChannels?.email || 'support@gdsticketing.com'}</a></li>
+          <li>Check your email for course approval and onboarding updates.</li>
+          <li>Revisit the dashboard if your access remains pending after payment.</li>
+        </ul>
+      </div>
+
+      <div className="dashboard-card">
         <h3>Available courses</h3>
         <div className="pricing-grid">
           {courses.map((course) => {
@@ -81,7 +152,7 @@ export function StudentDashboardPage({ user, dashboardMetrics, courses, enrollme
             return (
               <article className="pricing-card" key={course.id || course.slug}>
                 <p className="card-name">{course.title}</p>
-                <h3>{formatMoney(course.price)}</h3>
+                <h3>{formatMoney(course.price, course.currency || 'NGN')}</h3>
                 <p className="card-copy">{course.description}</p>
                 <button type="button" className="secondary-btn full-width" onClick={() => handleEnrollment(course)} disabled={(Boolean(enrollment) && !isRetryable) || checkoutLoading}>
                   {checkoutLoading && !enrollment ? 'Preparing checkout...' : buttonLabel}
@@ -97,9 +168,11 @@ export function StudentDashboardPage({ user, dashboardMetrics, courses, enrollme
           <h3>Enrollment status</h3>
           <ul>
             <li>Course access: {enrollments.some((item) => item.status === 'approved') ? 'Approved' : 'Awaiting payment or approval'}</li>
+            <li>Approved courses: {enrollments.filter((item) => item.status === 'approved').length}</li>
+            <li>Pending approval: {enrollments.filter((item) => item.status === 'paid_pending_approval').length}</li>
+            <li>Checkout pending: {enrollments.filter((item) => item.status === 'pending_payment').length}</li>
             <li>Institution: {user?.institution || 'Not provided'}</li>
             <li>Phone: {user?.phone || 'Not provided'}</li>
-            <li>Active enrollments: {enrollments.filter((item) => item.status === 'approved').length}</li>
           </ul>
         </div>
 
@@ -108,9 +181,9 @@ export function StudentDashboardPage({ user, dashboardMetrics, courses, enrollme
           <ul>
             {user?.enrolledCourses?.length ? user.enrolledCourses.map((courseId) => <li key={courseId}>{courseId}</li>) : (
               <>
-                <li>Sabre command structures</li>
-                <li>PNR creation and data handling</li>
-                <li>Ticket issuance and fare checks</li>
+                <li>Aviation phonetics and airline codes</li>
+                <li>Airport geography and route awareness</li>
+                <li>OTA booking flow and safe payment practices</li>
               </>
             )}
           </ul>

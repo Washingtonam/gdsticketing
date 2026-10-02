@@ -53,6 +53,15 @@ export function AdminDashboardPage({ user, dashboardMetrics, adminCourses, admin
               <li>Role: {isOwner ? 'Owner' : 'Admin'}</li>
             </ul>
           </div>
+          <div className="dashboard-card">
+            <h3>Launch readiness</h3>
+            <ul>
+              <li>✓ Public course catalog is published</li>
+              <li>✓ Payment review and approval flow is active</li>
+              <li>✓ Student dashboard lists approval and support status</li>
+              <li>✓ First cohort onboarding should start from the support channel</li>
+            </ul>
+          </div>
         </div>
       </div>
     </section>
@@ -87,7 +96,7 @@ export function AdminPaymentsPage({ adminEnrollments, formatMoney, approveEnroll
               <tr key={enrollment.id}>
                 <td><strong>{enrollment.student?.fullName || 'Unknown student'}</strong><span>{enrollment.student?.email || ''}</span></td>
                 <td>{enrollment.course?.title || 'Unknown course'}</td>
-                <td>{formatMoney(enrollment.course?.price)}</td>
+                <td>{formatMoney(enrollment.course?.price || 0, enrollment.course?.currency || 'NGN')}</td>
                 <td>{enrollment.paymentReference}</td>
                 <td><button type="button" className="primary-btn" onClick={() => approveEnrollment(enrollment)}>Approve access</button></td>
               </tr>

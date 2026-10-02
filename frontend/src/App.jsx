@@ -13,34 +13,40 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const pricingCards = [
   {
-    name: 'Student Access',
+    name: 'Aviation & OTA Foundations',
     price: '₦45,000',
-    description: 'Perfect for beginners exploring ticketing fundamentals and Sabre workflows.',
-    features: ['Core course access', 'PNR practice guides', 'Progress tracking'],
+    description: 'A starter path for learners who want to understand aviation phrases, airline codes, airport geography, and safe online booking workflows.',
+    features: ['Aviation phonetics and codes', 'Airport geography basics', 'Booking workflow and secure payment awareness'],
     featured: false,
   },
   {
-    name: 'Career Launch',
+    name: 'Career Studio',
     price: '₦75,000',
-    description: 'Built for students preparing for agency-level operations and practical ticketing confidence.',
-    features: ['Everything in Student Access', 'Advanced module walkthroughs', 'Agency simulation tasks'],
+    description: 'Built for students moving from foundations into GDS, travel operations, and agency-style practical execution.',
+    features: ['Everything in Foundations', 'GDS readiness guidance', 'Travel operations and agency workflows'],
     featured: true,
   },
 ];
 
 const benefits = [
-  'SABRE command fundamentals',
-  'PNR creation and fare logic',
-  'Real-world agency workflows',
-  'Career-ready training stack',
+  'Aviation alphabets, airline codes and route awareness',
+  'Online travel agency booking basics and scam prevention',
+  'GDS and ticketing fundamentals for real travel operations',
+  'Career-ready learning path for travel and mobility roles',
 ];
 
 const curriculum = [
-  'Introduction to GDS systems and airline reservation logic',
-  'Sabre command structures and passenger data entry',
-  'PNR creation, amendments, and ticket issuance',
-  'Course quizzes and practical ticketing exercises',
+  'Module 1: Aviation phonetics, airline codes and route awareness',
+  'Module 2: OTA booking flow, payment safety and scam prevention',
+  'Module 3: GDS and ticketing foundations for travel operations',
+  'Module 4: Practice activities, assignments and career readiness',
 ];
+
+const supportChannels = {
+  whatsapp: 'https://wa.me/2348000000000',
+  email: 'support@gdsticketing.com',
+  phone: '+234 800 000 0000',
+};
 
 const initialLeadForm = {
   fullName: '',
@@ -100,12 +106,22 @@ const initialModuleForm = {
   assessmentRequired: false,
 };
 
-const formatMoney = (amount) =>
-  new Intl.NumberFormat('en-NG', {
+const formatMoney = (amount, currency = 'NGN') => {
+  const normalizedCurrency = String(currency || 'NGN').trim().toUpperCase();
+  const localeMap = {
+    NGN: { locale: 'en-NG', currency: 'NGN' },
+    USD: { locale: 'en-US', currency: 'USD' },
+    GBP: { locale: 'en-GB', currency: 'GBP' },
+    EUR: { locale: 'en-IE', currency: 'EUR' },
+  };
+  const config = localeMap[normalizedCurrency] || localeMap.NGN;
+
+  return new Intl.NumberFormat(config.locale, {
     style: 'currency',
-    currency: 'NGN',
-    maximumFractionDigits: 0,
+    currency: config.currency,
+    maximumFractionDigits: normalizedCurrency === 'NGN' ? 0 : 2,
   }).format(amount || 0);
+};
 
 const getCurrentPath = () => window.location.pathname || '/';
 
@@ -185,12 +201,14 @@ function App() {
       ];
     }
 
+    const approvedCount = enrollments.filter((item) => item.status === 'approved').length;
+    const pendingCount = enrollments.filter((item) => ['pending_payment', 'paid_pending_approval'].includes(item.status)).length;
     return [
-      { label: 'Enrolled', value: user?.enrolledCourses?.length || 0 },
-      { label: 'Payment', value: user?.paymentStatus ? 'Active' : 'Pending' },
-      { label: 'Course', value: user?.enrolledCourses?.[0] ? 'Unlocked' : 'Not started' },
+      { label: 'Approved', value: approvedCount },
+      { label: 'Pending', value: pendingCount },
+      { label: 'Access', value: approvedCount ? 'Unlocked' : 'Not started' },
     ];
-  }, [adminCourses.length, user]);
+  }, [adminCourses.length, enrollments, user]);
 
   useEffect(() => {
     localStorage.setItem('gds_token', token);
@@ -289,7 +307,9 @@ function App() {
           ? 'Payment failed. Please try again when you are ready.'
           : payload.status === 'pending_payment'
             ? 'Paystack is still processing the payment. Your course will update when the payment is confirmed.'
-            : 'Payment successful. Your course access is now active.');
+            : payload.status === 'paid_pending_approval'
+              ? 'Payment confirmed. Your access is awaiting admin approval.'
+              : 'Payment successful. Your course access is now active.');
         setEnrollmentRefreshKey((value) => value + 1);
         const nextRoute = '/dashboard';
         window.history.replaceState({}, '', nextRoute);
@@ -1017,6 +1037,30 @@ function App() {
   const selectedAdminCourseId = isAdminLessonsRoute ? routeSegments[2] : '';
   const selectedAdminCourse = adminCourses.find((course) => course.id === selectedAdminCourseId || course.slug === selectedAdminCourseId) || null;
   const approvedCourses = enrollments.filter((item) => item.status === 'approved');
+  const pendingCourses = enrollments.filter((item) => ['pending_payment', 'paid_pending_approval'].includes(item.status));
+  const selectedCourseEnrollment = user?.role === 'student' && selectedCourse
+    ? enrollments.find((item) => {
+        const courseId = item.courseId || item.course?.id || item.course?.slug;
+        return courseId && (courseId === selectedCourse.id || courseId === selectedCourse.slug);
+      }) || null
+    : null;
+  const selectedCourseAccessState = selectedCourseEnrollment
+    ? {
+        status: selectedCourseEnrollment.status,
+        isApproved: selectedCourseEnrollment.status === 'approved',
+        isPending: ['pending_payment', 'paid_pending_approval'].includes(selectedCourseEnrollment.status),
+        isFailed: selectedCourseEnrollment.status === 'failed',
+        isActive: ['pending_payment', 'paid_pending_approval', 'approved'].includes(selectedCourseEnrollment.status),
+      }
+    : null;
+  const hasApprovedCourseAccessForSelectedCourse = Boolean(
+    selectedCourse && (
+      approvedCourses.some((item) => {
+        const courseId = item.courseId || item.course?.id || item.course?.slug;
+        return courseId && (courseId === selectedCourse.id || courseId === selectedCourse.slug);
+      }) || (Array.isArray(user?.enrolledCourses) && (user.enrolledCourses.includes(selectedCourse.id) || user.enrolledCourses.includes(selectedCourse.slug)))
+    )
+  );
 
   useEffect(() => {
     setActiveLessonIndex(0);
@@ -1062,7 +1106,7 @@ function App() {
   const displayCourses = courses.length
     ? courses.map((course) => ({
         ...course,
-        displayPrice: formatMoney(course.price),
+        displayPrice: formatMoney(course.price, course.currency || 'NGN'),
       }))
     : pricingCards.map((card) => ({
         id: card.name.toLowerCase().replace(/\s+/g, '-'),
@@ -1111,23 +1155,52 @@ function App() {
       )}
 
       {isCatalogRoute && <CourseCatalogPage courses={courses} displayCourses={displayCourses} navigate={navigate} />}
-      {isCourseDetailRoute && <CourseDetailPage selectedCourse={selectedCourse} formatMoney={formatMoney} handleEnrollment={handleEnrollment} navigate={navigate} />}
-      {isMyCoursesRoute && <MyCoursesPage approvedCourses={approvedCourses} courses={courses} formatMoney={formatMoney} navigate={navigate} />}
-      {isCourseLearnRoute && <LearningPage selectedCourse={selectedCourse} learningModules={learningModules} learningLessons={learningLessons} learningLoading={learningLoading} learningError={learningError} activeLessonIndex={activeLessonIndex} setActiveLessonIndex={setActiveLessonIndex} isLessonCompleted={isLessonCompleted} toggleLessonCompletion={toggleLessonCompletion} quizAnswers={quizAnswers} setQuizAnswers={setQuizAnswers} quizResult={quizResult} setQuizResult={setQuizResult} quizSubmitting={quizSubmitting} submitQuiz={submitQuiz} navigate={navigate} />}
+      {isCourseDetailRoute && <CourseDetailPage selectedCourse={selectedCourse} formatMoney={formatMoney} handleEnrollment={handleEnrollment} navigate={navigate} selectedCourseAccessState={selectedCourseAccessState} />}
+      {isMyCoursesRoute && <MyCoursesPage approvedCourses={approvedCourses} pendingCourses={pendingCourses} courses={courses} formatMoney={formatMoney} navigate={navigate} />}
+      {isCourseLearnRoute && (
+        !user || user.role !== 'student' ? (
+          <section className="page-section">
+            <div className="dashboard-card">
+              <p className="mini-label">Enrollment access</p>
+              <h2>Login required</h2>
+              <p>Sign in as a student to open this course and start learning.</p>
+              <button type="button" className="primary-btn" onClick={() => { setAuthMode('login'); navigate('/login'); }}>Go to login</button>
+            </div>
+          </section>
+        ) : !hasApprovedCourseAccessForSelectedCourse ? (
+          <section className="page-section">
+            <div className="dashboard-card">
+              <p className="mini-label">Enrollment access</p>
+              <h2>Course access is still pending approval</h2>
+              <p>Payment confirmation and admin approval are required before this learning portal unlocks. Please check your dashboard or contact support if this has already been approved.</p>
+              <button type="button" className="primary-btn" onClick={() => navigate('/dashboard/my-courses')}>Back to dashboard</button>
+            </div>
+          </section>
+        ) : (
+          <LearningPage selectedCourse={selectedCourse} learningModules={learningModules} learningLessons={learningLessons} learningLoading={learningLoading} learningError={learningError} activeLessonIndex={activeLessonIndex} setActiveLessonIndex={setActiveLessonIndex} isLessonCompleted={isLessonCompleted} toggleLessonCompletion={toggleLessonCompletion} quizAnswers={quizAnswers} setQuizAnswers={setQuizAnswers} quizResult={quizResult} setQuizResult={setQuizResult} quizSubmitting={quizSubmitting} submitQuiz={submitQuiz} navigate={navigate} />
+        )
+      )}
 
       {isLandingRoute && (
         <>
           <main className="hero-section">
             <div className="hero-copy">
-              <span className="pill">GDS TICKETING ACADEMY · LAGOS</span>
-              <h1>Learn the systems that move the world.</h1>
+              <span className="pill">GDS TICKETING ACADEMY · GLOBAL</span>
+              <h1>Learn the skills behind aviation, travel, and mobility careers.</h1>
               <p>
-                Practical Sabre and GDS training for ambitious students building a real career in travel operations, airline ticketing, and agency support.
+                Practical training in aviation communication, airline codes, airport geography, OTA booking basics, and the foundations of GDS ticketing for students and early-career professionals.
               </p>
 
               <div className="cta-row">
                 <button type="button" className="primary-btn" onClick={() => { setAuthMode('register'); navigate('/register'); }}>Reserve my student spot</button>
                 <a href="#pricing" className="secondary-btn">View pricing</a>
+              </div>
+
+              <p className="field-hint">Course access opens after payment is confirmed and admin approval is completed.</p>
+
+              <div className="dashboard-card" style={{ marginTop: '1rem', marginBottom: '1rem' }}>
+                <h3>Student support</h3>
+                <p>Need help with payment, onboarding, or course access? Use the student support channel shared in your welcome message and the official WhatsApp support line for updates.</p>
               </div>
 
               <ul className="benefits-list">
@@ -1154,8 +1227,8 @@ function App() {
             </div>
 
             <div className="lead-card" id="lead-form">
-              <p className="lead-label">Student special discount</p>
-              <h3>Join the institutional outreach list</h3>
+              <p className="lead-label">Student early access</p>
+              <h3>Join the travel and aviation learning list</h3>
 
               <form onSubmit={handleLeadSubmit} className="lead-form">
                 <label>
@@ -1212,16 +1285,16 @@ function App() {
           <section className="info-grid" id="program">
             <div className="info-card accent-card">
               <p className="mini-label">Why this works</p>
-              <h3>Built for students who need hands-on travel-tech skills.</h3>
+              <h3>Built for students who want practical travel and aviation skills.</h3>
               <p>
-                We blend practical ticketing fundamentals with structured learning so students can move from classroom theory to agency-ready confidence.
+                We combine aviation language, travel systems awareness, OTA safety, and GDS foundations so learners gain a clear path into travel operations and mobility services.
               </p>
             </div>
             <div className="info-card">
               <p className="mini-label">Industry focus</p>
-              <h3>Sabre-ready workflows</h3>
+              <h3>Aviation and travel operations</h3>
               <p>
-                From PNR entry to standard booking journeys, students learn the most relevant processes used in modern travel operations.
+                Students explore airline codes, route fundamentals, bookings, payments, and structured ticketing logic used in modern travel workflows.
               </p>
             </div>
           </section>
@@ -1246,13 +1319,13 @@ function App() {
 
           <section className="pricing-section" id="pricing">
             <div className="section-heading">
-              <p className="mini-label">School pricing</p>
-              <h2>Standard industry price vs. student special discount</h2>
+              <p className="mini-label">Course pricing</p>
+              <h2>Entry-level access and career-focused progression</h2>
             </div>
 
             <div className="pricing-grid">
               {displayCourses.map((course) => {
-                const isFeatured = course.level === 'Advanced' || course.title === 'Career Launch';
+                const isFeatured = course.level === 'Advanced' || course.title === 'Career Studio';
                 const features = course.lessons
                   ? course.lessons.map((lesson) => lesson.title)
                   : pricingCards.find((card) => card.name === course.title)?.features || ['Core course access'];
@@ -1261,7 +1334,7 @@ function App() {
                   <article key={course.id || course.slug} className={`pricing-card ${isFeatured ? 'featured' : ''}`}>
                     {course.thumbnailUrl && <img className="course-card-image" src={course.thumbnailUrl} alt="" />}
                     <p className="card-name">{course.title}</p>
-                    <h3>{course.displayPrice || formatMoney(course.price)}</h3>
+                    <h3>{course.displayPrice || formatMoney(course.price, course.currency || 'NGN')}</h3>
                     <p className="card-copy">{course.description}</p>
                     <ul>
                       {features.slice(0, 3).map((feature) => (
@@ -1324,6 +1397,7 @@ function App() {
           formatMoney={formatMoney}
           handleEnrollment={handleEnrollment}
           logout={logout}
+          supportChannels={supportChannels}
         />
       )}
 

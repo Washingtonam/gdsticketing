@@ -34,7 +34,7 @@ export function AdminCatalogPage({
       <form className="course-editor" onSubmit={saveCourse}>
         <label>
           Course title
-          <input name="title" value={courseForm.title} onChange={handleCourseChange} placeholder="Sabre Core Ticketing" required />
+          <input name="title" value={courseForm.title} onChange={handleCourseChange} placeholder="Aviation & OTA Foundations" required />
         </label>
         <label>
           Target audience
@@ -43,6 +43,19 @@ export function AdminCatalogPage({
         <label>
           Price
           <input name="price" type="number" min="0" value={courseForm.price} onChange={handleCourseChange} required />
+        </label>
+        <label>
+          Currency
+          <select name="currency" value={courseForm.currency} onChange={handleCourseChange}>
+            <option value="NGN">NGN</option>
+            <option value="USD">USD</option>
+            <option value="GBP">GBP</option>
+            <option value="EUR">EUR</option>
+            <option value="GHS">GHS</option>
+            <option value="KES">KES</option>
+            <option value="ZAR">ZAR</option>
+            <option value="CAD">CAD</option>
+          </select>
         </label>
         <label>
           Duration
@@ -58,7 +71,7 @@ export function AdminCatalogPage({
         </label>
         <label>
           Pricing tier
-          <input name="pricingTier" value={courseForm.pricingTier} onChange={handleCourseChange} placeholder="Career Launch" />
+          <input name="pricingTier" value={courseForm.pricingTier} onChange={handleCourseChange} placeholder="Career Studio" />
         </label>
         <label>
           Group discount (%)
