@@ -15,31 +15,131 @@ const pricingCards = [
   {
     name: 'Aviation & OTA Foundations',
     price: '₦45,000',
-    description: 'A starter path for learners who want to understand aviation phrases, airline codes, airport geography, and safe online booking workflows.',
-    features: ['Aviation phonetics and codes', 'Airport geography basics', 'Booking workflow and secure payment awareness'],
+    description: 'A starter path for learners who want to understand aviation language, airline codes, airport geography, safe online booking, and trusted vendor processes.',
+    features: ['Aviation phonetics and airline codes', 'Airport geography and IATA awareness', 'OTA booking flow and scam prevention'],
     featured: false,
   },
   {
-    name: 'Career Studio',
+    name: 'GDS & Visa Career Track',
     price: '₦75,000',
-    description: 'Built for students moving from foundations into GDS, travel operations, and agency-style practical execution.',
-    features: ['Everything in Foundations', 'GDS readiness guidance', 'Travel operations and agency workflows'],
+    description: 'Built for students moving from foundations into GDS operations, ticketing logic, and visa-processing workflows for travel careers.',
+    features: ['Everything in Foundations', 'GDS ticketing readiness', 'Visa workflow guidance and career planning'],
     featured: true,
   },
 ];
 
+const operatingPillars = [
+  {
+    title: 'Structured Content',
+    description: 'A clear 4-module learning path that brings students from aviation basics to operational readiness.',
+    bullets: ['Aviation phonetics and alpha-to-zulu terminology', 'Airline codes, airport codes, and route geography', 'Practical video and PDF lesson delivery'],
+  },
+  {
+    title: 'Platform & Access',
+    description: 'A secure digital campus with a custom web portal, course payments, and protected learning access.',
+    bullets: ['Custom LMS web app and student portal', 'Paystack-ready checkout and payment tracking', 'GDS sandbox or premium access as a paid add-on'],
+  },
+  {
+    title: 'Digital Marketing',
+    description: 'A lean lead-generation engine designed to attract students through social campaigns and consistent inquiry flow.',
+    bullets: ['Meta/Facebook ad campaigns with micro-budget testing', 'Organic social content and WhatsApp lead capture', 'Automated interest forms and follow-up messaging'],
+  },
+  {
+    title: 'Physical Outreach',
+    description: 'Local visibility and university engagement extend the academy beyond the web and build trust in-person.',
+    bullets: ['Campus presentations and department outreach', 'On-site workshops and student education sessions', 'Direct conversations with students and career-minded learners'],
+  },
+];
+
 const benefits = [
-  'Aviation alphabets, airline codes and route awareness',
-  'Online travel agency booking basics and scam prevention',
-  'GDS and ticketing fundamentals for real travel operations',
-  'Career-ready learning path for travel and mobility roles',
+  'Aviation alphabets, airline codes, airport awareness, and route intelligence',
+  'OTA booking workflows, vendor verification, and cloning-risk awareness',
+  'GDS foundations, ticketing logic, and career-oriented travel operations',
+  'Visa-processing knowledge, digital documents, and practical onboarding support',
 ];
 
 const curriculum = [
-  'Module 1: Aviation phonetics, airline codes and route awareness',
-  'Module 2: OTA booking flow, payment safety and scam prevention',
-  'Module 3: GDS and ticketing foundations for travel operations',
-  'Module 4: Practice activities, assignments and career readiness',
+  'Module 1: Aviation phonetics, airline codes, airport codes, and international route awareness',
+  'Module 2: OTAs, booking workflows, payment safety, trusted vendor checks, and anti-cloning best practices',
+  'Module 3: GDS systems including Sabre, Amadeus, and Galileo, plus PNR and ticketing foundations',
+  'Module 4: Visa application processing, eVisa vs sticker visa guidance, and next-step career readiness',
+];
+
+const studentOutcomes = [
+  {
+    title: 'Airline and airport fluency',
+    description: 'Learners become comfortable with airline code language, airport geography, and travel route logic.',
+  },
+  {
+    title: 'Safer booking decisions',
+    description: 'Students learn to spot trusted booking channels, avoid risky patterns, and work with verified vendor flows.',
+  },
+  {
+    title: 'GDS and ticketing readiness',
+    description: 'The curriculum introduces the habits and systems behind modern ticketing, reservations, and itinerary logic.',
+  },
+  {
+    title: 'Career clarity',
+    description: 'Learners finish with a clearer path into travel operations, visa facilitation, and mobility-facing careers.',
+  },
+];
+
+const launchStats = [
+  { label: 'Core learning path', value: '4 modules', detail: 'Aviation, OTA, GDS, and visa readiness.' },
+  { label: 'Launch support', value: '24/7', detail: 'Direct WhatsApp and email support before and after enrollment.' },
+  { label: 'Conversion flow', value: 'Live', detail: 'Payment, approval, and student dashboard access stay connected.' },
+  { label: 'Outreach model', value: 'Hybrid', detail: 'Digital marketing meets in-person institution engagement.' },
+];
+
+const testimonials = [
+  {
+    quote: 'The structure made aviation and booking logic feel practical instead of intimidating. I finally understood how travel operations connect in real life.',
+    name: 'Ada M.',
+    role: 'Student, candidate cohort',
+  },
+  {
+    quote: 'The course gave me a clearer path into travel and mobility services. It was simple, focused, and built around real-world thinking.',
+    name: 'Samuel O.',
+    role: 'Student, GDS track',
+  },
+];
+
+const cohortTimeline = [
+  {
+    title: 'Step 1: Capture interest',
+    description: 'Students submit their details and join the early-access list through the landing page or direct outreach.',
+  },
+  {
+    title: 'Step 2: Confirm access',
+    description: 'After payment, each learner receives a clear onboarding status showing whether they are pending approval or active.',
+  },
+  {
+    title: 'Step 3: Learn in sequence',
+    description: 'The curriculum moves through aviation, OTA fundamentals, GDS operations, and visa processing in a guided flow.',
+  },
+  {
+    title: 'Step 4: Grow with support',
+    description: 'Students receive practical follow-up, support messages, and direct guidance as they complete the course journey.',
+  },
+];
+
+const faqs = [
+  {
+    question: 'Do students need aviation experience before enrolling?',
+    answer: 'No. The course is structured to start with the basics and build toward travel operations and GDS awareness in a clear path.',
+  },
+  {
+    question: 'Is this a completely online course?',
+    answer: 'The learning experience is digital-first, but it is reinforced with direct outreach, WhatsApp updates, and practical onboarding support.',
+  },
+  {
+    question: 'When do students get course access?',
+    answer: 'Access is granted after payment confirmation and admin approval, which keeps the learning process organized and manageable for the cohort.',
+  },
+  {
+    question: 'Can I take more than one learning track?',
+    answer: 'Yes. Learners can progress through the core path and then move into more advanced ticketing or agency-style guidance as they grow.',
+  },
 ];
 
 const supportChannels = {
@@ -1282,6 +1382,73 @@ function App() {
             </div>
           </main>
 
+          <section className="pillar-section" aria-label="Launch model">
+            <div className="section-heading">
+              <p className="mini-label">Launch model</p>
+              <h2>Four operations working together</h2>
+            </div>
+
+            <div className="pillar-grid">
+              {operatingPillars.map((pillar, index) => (
+                <article className="pillar-card" key={pillar.title}>
+                  <span className="pillar-index">0{index + 1}</span>
+                  <h3>{pillar.title}</h3>
+                  <p>{pillar.description}</p>
+                  <ul>
+                    {pillar.bullets.map((bullet) => (
+                      <li key={bullet}>{bullet}</li>
+                    ))}
+                  </ul>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="support-strip" aria-label="Support and onboarding">
+            <div className="section-heading compact-heading">
+              <p className="mini-label">Support</p>
+              <h2>Student onboarding is built for quick follow-up</h2>
+            </div>
+
+            <div className="support-grid">
+              <div className="support-card">
+                <p className="mini-label">WhatsApp</p>
+                <h3>Fast student replies</h3>
+                <p>Use WhatsApp support for questions, enrollment status, and fast follow-up.</p>
+                <a href={supportChannels.whatsapp} target="_blank" rel="noreferrer">Open WhatsApp</a>
+              </div>
+              <div className="support-card">
+                <p className="mini-label">Email</p>
+                <h3>Official communication</h3>
+                <p>Students receive formal update messages, onboarding guidance, and enrollment follow-up.</p>
+                <a href={`mailto:${supportChannels.email}`}>Email support</a>
+              </div>
+              <div className="support-card">
+                <p className="mini-label">Phone</p>
+                <h3>Human contact</h3>
+                <p>Direct calls support immediate questions before and after a learner signs up.</p>
+                <a href={`tel:${supportChannels.phone.replace(/\s+/g, '')}`}>{supportChannels.phone}</a>
+              </div>
+            </div>
+          </section>
+
+          <section className="outcomes-section" aria-label="Student outcomes">
+            <div className="section-heading compact-heading">
+              <p className="mini-label">Career outcomes</p>
+              <h2>What a student can expect after this learning path</h2>
+            </div>
+
+            <div className="outcomes-grid">
+              {studentOutcomes.map((item, index) => (
+                <article className="outcome-card" key={item.title}>
+                  <span className="timeline-number">0{index + 1}</span>
+                  <h3>{item.title}</h3>
+                  <p>{item.description}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+
           <section className="info-grid" id="program">
             <div className="info-card accent-card">
               <p className="mini-label">Why this works</p>
@@ -1317,6 +1484,84 @@ function App() {
             </div>
           </section>
 
+          <section className="timeline-section" aria-label="First cohort launch process">
+            <div className="section-heading compact-heading">
+              <p className="mini-label">First cohort</p>
+              <h2>How the launch works</h2>
+            </div>
+
+            <div className="timeline-grid">
+              {cohortTimeline.map((item, index) => (
+                <article className="timeline-card" key={item.title}>
+                  <span className="timeline-number">0{index + 1}</span>
+                  <h3>{item.title}</h3>
+                  <p>{item.description}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="faq-section" aria-label="Frequently asked questions">
+            <div className="section-heading compact-heading">
+              <p className="mini-label">FAQ</p>
+              <h2>Common questions from prospective students</h2>
+            </div>
+
+            <div className="faq-list">
+              {faqs.map((item) => (
+                <div className="faq-item" key={item.question}>
+                  <h3>{item.question}</h3>
+                  <p>{item.answer}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="scoreboard-section" aria-label="Launch scoreboard">
+            <div className="section-heading compact-heading">
+              <p className="mini-label">Launch scorecard</p>
+              <h2>Built to support a real first cohort</h2>
+            </div>
+
+            <div className="scoreboard-grid">
+              {launchStats.map((item) => (
+                <div className="scoreboard-card" key={item.label}>
+                  <p>{item.label}</p>
+                  <h3>{item.value}</h3>
+                  <span>{item.detail}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="testimonial-section" aria-label="Student feedback">
+            <div className="section-heading compact-heading">
+              <p className="mini-label">Student voice</p>
+              <h2>What learners feel after the first steps</h2>
+            </div>
+
+            <div className="testimonial-grid">
+              {testimonials.map((item) => (
+                <article className="testimonial-card" key={item.name}>
+                  <span className="quote-mark">“</span>
+                  <p>{item.quote}</p>
+                  <div className="testimonial-meta">
+                    <strong>{item.name}</strong>
+                    <span>{item.role}</span>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="cta-banner" aria-label="Final CTA">
+            <div>
+              <p className="mini-label">Next step</p>
+              <h2>Reserve your place in the next cohort and start learning with a clear path.</h2>
+            </div>
+            <button type="button" className="primary-btn" onClick={() => { setAuthMode('register'); navigate('/register'); }}>Start your enrollment</button>
+          </section>
+
           <section className="pricing-section" id="pricing">
             <div className="section-heading">
               <p className="mini-label">Course pricing</p>
@@ -1325,7 +1570,7 @@ function App() {
 
             <div className="pricing-grid">
               {displayCourses.map((course) => {
-                const isFeatured = course.level === 'Advanced' || course.title === 'Career Studio';
+                const isFeatured = Boolean(course.featured) || course.level === 'Advanced' || course.title === 'GDS & Visa Career Track' || course.title === 'Career Studio';
                 const features = course.lessons
                   ? course.lessons.map((lesson) => lesson.title)
                   : pricingCards.find((card) => card.name === course.title)?.features || ['Core course access'];

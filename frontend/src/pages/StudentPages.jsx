@@ -70,6 +70,12 @@ export function MyCoursesPage({ approvedCourses, pendingCourses, courses, format
 export function StudentDashboardPage({ user, dashboardMetrics, courses, enrollments, checkoutLoading, formatMoney, handleEnrollment, logout, supportChannels }) {
   const emailLink = supportChannels?.email ? `mailto:${supportChannels.email}` : '#';
   const whatsappLink = supportChannels?.whatsapp || '#';
+  const onboardingChecklist = [
+    { title: 'Confirm your enrollment', status: enrollments.some((item) => item.status === 'approved') ? 'Done' : 'In progress', detail: 'Complete your payment and wait for admin approval to unlock your course.' },
+    { title: 'Review the learning path', status: 'Ready', detail: 'Start with aviation basics before moving into OTA, GDS, and visa workflows.' },
+    { title: 'Complete your first lesson', status: 'Next step', detail: 'Open the approved course and work through the first module as soon as access opens.' },
+    { title: 'Ask for support when needed', status: 'Available', detail: 'Use WhatsApp or email if you need help with onboarding, access, or assignments.' },
+  ];
 
   return (
     <section className="dashboard-shell student-dashboard-shell">
@@ -119,6 +125,21 @@ export function StudentDashboardPage({ user, dashboardMetrics, courses, enrollme
             </>
           )}
         </ul>
+      </div>
+
+      <div className="dashboard-card">
+        <h3>First cohort onboarding</h3>
+        <div className="onboarding-checklist">
+          {onboardingChecklist.map((item) => (
+            <div key={item.title} className="onboarding-check-item">
+              <div className="onboarding-topline">
+                <strong>{item.title}</strong>
+                <span>{item.status}</span>
+              </div>
+              <p>{item.detail}</p>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="dashboard-card">

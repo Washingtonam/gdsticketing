@@ -1,5 +1,13 @@
 export function AdminDashboardPage({ user, dashboardMetrics, adminCourses, adminEnrollments, navigate, logout }) {
   const isOwner = user?.role === 'super_admin';
+  const launchChecklist = [
+    { title: 'Video content', status: 'In progress', detail: 'Record and upload short lessons for Modules 1–4.' },
+    { title: 'PDF resource bank', status: 'Ready', detail: 'Prepare airline and airport code guides for download.' },
+    { title: 'Lead generation', status: 'Active', detail: 'Run micro-budget Meta campaigns and collect student interest.' },
+    { title: 'Institution outreach', status: 'Planned', detail: 'Schedule UniBen, Wellspring, and department presentations.' },
+    { title: 'Payment approval', status: 'Active', detail: 'Review Paystack confirmations and approve student access.' },
+    { title: 'Student follow-up', status: 'Active', detail: 'Use WhatsApp and email to confirm onboarding and next steps.' },
+  ];
 
   return (
     <section className="dashboard-shell admin-dashboard-shell">
@@ -62,6 +70,27 @@ export function AdminDashboardPage({ user, dashboardMetrics, adminCourses, admin
               <li>✓ First cohort onboarding should start from the support channel</li>
             </ul>
           </div>
+        </div>
+      </div>
+
+      <div className="admin-panel launch-panel">
+        <div className="admin-panel-heading">
+          <div>
+            <p className="mini-label">Launch board</p>
+            <h3>First cohort action board</h3>
+          </div>
+          <span className="admin-badge">Cohort 1</span>
+        </div>
+        <div className="launch-checklist-grid">
+          {launchChecklist.map((item) => (
+            <div key={item.title} className="launch-checklist-item">
+              <div className="launch-item-topline">
+                <strong>{item.title}</strong>
+                <span>{item.status}</span>
+              </div>
+              <p>{item.detail}</p>
+            </div>
+          ))}
         </div>
       </div>
     </section>
