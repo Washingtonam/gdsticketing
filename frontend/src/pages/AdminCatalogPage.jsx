@@ -87,9 +87,14 @@ export function AdminCatalogPage({
           <input name="introVideoUrl" type="url" value={courseForm.introVideoUrl} onChange={handleCourseChange} placeholder="https://..." />
         </label>
         <label>
-          Syllabus PDF
+          Syllabus PDF URL
+          <input name="syllabusUrl" type="url" value={courseForm.syllabusUrl} onChange={handleCourseChange} placeholder="https://drive.google.com/..." />
+          <span className="field-hint">Paste a shareable Google Drive or hosted PDF link.</span>
+        </label>
+        <label>
+          Optional syllabus upload
           <input type="file" accept="application/pdf" onChange={handleSyllabusUpload} disabled={uploadingSyllabus} />
-          <span className="field-hint">{uploadingSyllabus ? 'Uploading to Cloudinary...' : courseForm.syllabusUrl ? 'Syllabus ready to save' : 'PDF preview'}</span>
+          <span className="field-hint">{uploadingSyllabus ? 'Uploading to Cloudinary...' : 'Upload a PDF directly if you prefer.'}</span>
         </label>
         <label className="course-editor-wide">
           Description

@@ -10,6 +10,7 @@ const User = require('./models/User');
 const Lead = require('./models/Lead');
 const Course = require('./models/Course');
 const Enrollment = require('./models/Enrollment');
+const StudentFollowUp = require('./models/StudentFollowUp');
 
 dotenv.config();
 
@@ -41,6 +42,7 @@ app.use(express.json({
 const leads = [];
 const enrollments = [];
 const users = [];
+const studentFollowUps = new Map();
 
 const defaultCourses = [
   {
@@ -1175,6 +1177,8 @@ app.post('/api/v1/payments/initialize', requireAuth, async (req, res) => {
       courseId: storedCourseId,
       paymentReference: reference,
       paymentProvider: 'paystack',
+      amount: course.price,
+      currency: normalizedCourseCurrency,
       status: 'pending_payment',
       paid: false,
     });
@@ -1184,6 +1188,9 @@ app.post('/api/v1/payments/initialize', requireAuth, async (req, res) => {
       userId: req.user.id,
       courseId: course.id,
       paymentReference: reference,
+      createdAt: new Date().toISOString(),
+      amount: course.price,
+      currency: normalizedCourseCurrency,
       status: 'pending_payment',
       paid: false,
     });
@@ -1480,6 +1487,150 @@ app.patch('/api/v1/admin/enrollments/:enrollmentId/approve', requireAuth, requir
   if (!user.enrolledCourses.includes(enrollment.courseId)) user.enrolledCourses.push(enrollment.courseId);
   user.paymentStatus = true;
   return res.json({ message: 'Course access approved.', enrollmentId: enrollment.id });
+});
+
+app.get('/api/v1/admin/payment-transactions', requireAuth, requireAdmin, async (req, res) => {
+  if (databaseReady) {
+    const records = await Enrollment.find({}).sort({ createdAt: -1 }).lean();
+    const userIds = [...new Set(records.map((record) => record.userId))];
+    const courseIds = [...new Set(records.map((record) => record.courseId))];
+    const [studentRecords, courseRecords] = await Promise.all([
+      User.find({ _id: { $in: userIds } }).lean(),
+      Course.find({ _id: { $in: courseIds } }).lean(),
+    ]);
+    const studentMap = new Map(studentRecords.map((student) => [student._id.toString(), student]));
+    const courseMap = new Map(courseRecords.map((course) => [course._id.toString(), course]));
+
+    return res.json({
+      transactions: records.map((record) => {
+        const course = courseMap.get(record.courseId);
+        return {
+          id: record._id.toString(),
+          transactionId: record.paymentReference || record._id.toString(),
+          paymentReference: record.paymentReference,
+          status: record.status,
+          paid: record.paid,
+          createdAt: record.createdAt,
+          amount: record.amount ?? course?.price ?? 0,
+          currency: record.currency || course?.currency || 'NGN',
+          student: studentMap.has(record.userId) ? sanitizeUser(studentMap.get(record.userId)) : null,
+          course: course ? { id: record.courseId, title: course.title } : null,
+        };
+      }),
+    });
+  }
+
+  return res.json({
+    transactions: enrollments.slice().sort((first, second) => new Date(second.createdAt) - new Date(first.createdAt)).map((record) => {
+      const course = courses.find((item) => item.id === record.courseId);
+      const student = findUserById(record.userId);
+      return {
+        ...record,
+        transactionId: record.paymentReference || record.id,
+        amount: record.amount ?? course?.price ?? 0,
+        currency: record.currency || course?.currency || 'NGN',
+        student: student ? sanitizeUser(student) : null,
+        course: course ? { id: course.id, title: course.title } : null,
+      };
+    }),
+  });
+});
+
+app.get('/api/v1/admin/follow-ups', requireAuth, requireAdmin, async (req, res) => {
+  if (databaseReady) {
+    const records = await Enrollment.find({ status: { $in: ['paid_pending_approval', 'approved'] } }).sort({ createdAt: -1 }).lean();
+    const userIds = [...new Set(records.map((record) => record.userId))];
+    const [studentRecords, followUpRecords] = await Promise.all([
+      User.find({ _id: { $in: userIds }, role: 'student' }).lean(),
+      StudentFollowUp.find({ studentId: { $in: userIds } }).lean(),
+    ]);
+    const enrollmentByUser = new Map();
+    records.forEach((record) => {
+      if (!enrollmentByUser.has(record.userId)) enrollmentByUser.set(record.userId, record);
+    });
+    const followUpByStudent = new Map(followUpRecords.map((record) => [record.studentId, record]));
+
+    return res.json({
+      students: studentRecords.map((student) => {
+        const studentId = student._id.toString();
+        const followUp = followUpByStudent.get(studentId);
+        return {
+          ...sanitizeUser(student),
+          status: followUp?.status || 'new',
+          interactions: followUp?.interactions || [],
+          enrolledAt: enrollmentByUser.get(studentId)?.createdAt || student.createdAt,
+        };
+      }),
+    });
+  }
+
+  const cohortEnrollments = enrollments.filter((record) => ['paid_pending_approval', 'approved'].includes(record.status));
+  const studentIds = [...new Set(cohortEnrollments.map((record) => record.userId))];
+  return res.json({
+    students: studentIds.map((studentId) => {
+      const student = findUserById(studentId);
+      if (!student) return null;
+      const followUp = studentFollowUps.get(studentId);
+      const enrollment = cohortEnrollments.find((record) => record.userId === studentId);
+      return {
+        ...sanitizeUser(student),
+        status: followUp?.status || 'new',
+        interactions: followUp?.interactions || [],
+        enrolledAt: enrollment?.createdAt || student?.createdAt,
+      };
+    }).filter(Boolean),
+  });
+});
+
+app.patch('/api/v1/admin/follow-ups/:studentId/status', requireAuth, requireAdmin, async (req, res) => {
+  const allowedStatuses = new Set(['new', 'contacted', 'responded', 'onboarded']);
+  const { status } = req.body || {};
+  if (!allowedStatuses.has(status)) return res.status(400).json({ message: 'Choose a valid onboarding status.' });
+
+  if (databaseReady) {
+    const student = await User.findOne({ _id: req.params.studentId, role: 'student' }).select('_id');
+    if (!student) return res.status(404).json({ message: 'Student account was not found.' });
+    const followUp = await StudentFollowUp.findOneAndUpdate(
+      { studentId: student._id.toString() },
+      { $set: { status }, $setOnInsert: { studentId: student._id.toString() } },
+      { new: true, upsert: true, runValidators: true }
+    ).lean();
+    return res.json({ status: followUp.status });
+  }
+
+  if (!findUserById(req.params.studentId)) return res.status(404).json({ message: 'Student account was not found.' });
+  const followUp = studentFollowUps.get(req.params.studentId) || { status: 'new', interactions: [] };
+  followUp.status = status;
+  studentFollowUps.set(req.params.studentId, followUp);
+  return res.json({ status: followUp.status });
+});
+
+app.post('/api/v1/admin/follow-ups/:studentId/interactions', requireAuth, requireAdmin, async (req, res) => {
+  const { channel, template } = req.body || {};
+  if (!['whatsapp', 'email'].includes(channel) || typeof template !== 'string' || !template.trim()) {
+    return res.status(400).json({ message: 'A valid communication channel and template are required.' });
+  }
+
+  const interaction = { channel, template: template.trim(), adminId: req.user.id, createdAt: new Date() };
+  if (databaseReady) {
+    const student = await User.findOne({ _id: req.params.studentId, role: 'student' }).select('_id');
+    if (!student) return res.status(404).json({ message: 'Student account was not found.' });
+    const followUp = await StudentFollowUp.findOneAndUpdate(
+      { studentId: student._id.toString() },
+      {
+        $setOnInsert: { studentId: student._id.toString(), status: 'new' },
+        $push: { interactions: interaction },
+      },
+      { new: true, upsert: true, runValidators: true }
+    ).lean();
+    return res.status(201).json({ interaction, interactions: followUp.interactions });
+  }
+
+  if (!findUserById(req.params.studentId)) return res.status(404).json({ message: 'Student account was not found.' });
+  const followUp = studentFollowUps.get(req.params.studentId) || { status: 'new', interactions: [] };
+  followUp.interactions = [interaction, ...followUp.interactions];
+  studentFollowUps.set(req.params.studentId, followUp);
+  return res.status(201).json({ interaction, interactions: followUp.interactions });
 });
 
 app.get('/api/v1/admin/dashboard-stats', requireAuth, requireAdmin, (req, res) => {

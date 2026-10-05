@@ -6,6 +6,8 @@ const enrollmentSchema = new mongoose.Schema(
     courseId: { type: String, required: true },
     paymentReference: { type: String, default: '' },
     paymentProvider: { type: String, default: 'paystack' },
+    amount: { type: Number, default: null },
+    currency: { type: String, default: '' },
     status: {
       type: String,
       enum: ['pending_payment', 'paid_pending_approval', 'approved', 'failed', 'rejected'],

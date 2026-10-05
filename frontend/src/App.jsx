@@ -3,7 +3,7 @@ import './App.css';
 import { CourseCatalogPage, CourseDetailPage } from './pages/CoursePages.jsx';
 import { AuthPage } from './pages/AuthPages.jsx';
 import { MyCoursesPage, StudentDashboardPage } from './pages/StudentPages.jsx';
-import { AdminDashboardPage, AdminPaymentsPage } from './pages/AdminPages.jsx';
+import { AdminDashboardPage, AdminFollowUpPage, AdminPaymentsPage } from './pages/AdminPages.jsx';
 import { AdminCatalogPage } from './pages/AdminCatalogPage.jsx';
 import { OwnerControlsPage } from './pages/OwnerControlsPage.jsx';
 import { LearningPage } from './pages/LearningPage.jsx';
@@ -237,6 +237,8 @@ function App() {
   const [courses, setCourses] = useState([]);
   const [enrollments, setEnrollments] = useState([]);
   const [adminEnrollments, setAdminEnrollments] = useState([]);
+  const [adminTransactions, setAdminTransactions] = useState([]);
+  const [followUpStudents, setFollowUpStudents] = useState([]);
   const [adminCourses, setAdminCourses] = useState([]);
   const [courseForm, setCourseForm] = useState(initialCourseForm);
   const [editingCourseId, setEditingCourseId] = useState('');
@@ -492,6 +494,44 @@ function App() {
   }, [adminEnrollmentRefreshKey, token, user?.role]);
 
   useEffect(() => {
+    if (!token || !['admin', 'super_admin'].includes(user?.role)) return;
+
+    const loadPaymentTransactions = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/v1/admin/payment-transactions`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.message || 'Unable to load payment transactions.');
+        setAdminTransactions(payload.transactions || []);
+      } catch (error) {
+        setStatus(error.message || 'Unable to load payment transactions.');
+      }
+    };
+
+    loadPaymentTransactions();
+  }, [adminEnrollmentRefreshKey, token, user?.role]);
+
+  useEffect(() => {
+    if (!token || !['admin', 'super_admin'].includes(user?.role)) return;
+
+    const loadFollowUpStudents = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/v1/admin/follow-ups`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.message || 'Unable to load student follow-ups.');
+        setFollowUpStudents(payload.students || []);
+      } catch (error) {
+        setStatus(error.message || 'Unable to load student follow-ups.');
+      }
+    };
+
+    loadFollowUpStudents();
+  }, [token, user?.role]);
+
+  useEffect(() => {
     if (!token || user?.role !== 'super_admin') return;
 
     const loadAdminUsers = async () => {
@@ -718,6 +758,59 @@ function App() {
       setStatus(`Access approved for ${enrollment.student?.fullName || 'the student'}.`);
     } catch (error) {
       setStatus(error.message || 'Unable to approve course access.');
+    }
+  };
+
+  const updateStudentStatus = async (studentId, nextStatus) => {
+    try {
+      const response = await fetch(`${API_URL}/api/v1/admin/follow-ups/${encodeURIComponent(studentId)}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.message || 'Unable to update onboarding status.');
+      setFollowUpStudents((previous) => previous.map((student) => student.id === studentId
+        ? { ...student, status: payload.status }
+        : student));
+      setStatus('Student onboarding status updated.');
+    } catch (error) {
+      setStatus(error.message || 'Unable to update onboarding status.');
+    }
+  };
+
+  const prepareFollowUp = async (student, channel, template, message) => {
+    if (channel === 'whatsapp') {
+      const phone = String(student.phone || '').replace(/\D/g, '');
+      if (!phone) {
+        setStatus('Add a phone number to this student account before preparing a WhatsApp message.');
+        return;
+      }
+      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+    } else {
+      window.open(`mailto:${encodeURIComponent(student.email)}?subject=${encodeURIComponent(template)}&body=${encodeURIComponent(message)}`, '_self');
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/api/v1/admin/follow-ups/${encodeURIComponent(student.id)}/interactions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ channel, template }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.message || 'Unable to record this follow-up.');
+      setFollowUpStudents((previous) => previous.map((item) => item.id === student.id
+        ? { ...item, interactions: payload.interactions }
+        : item));
+      setStatus(`${template} prepared for ${student.fullName}.`);
+    } catch (error) {
+      setStatus(error.message || 'Unable to record this follow-up.');
     }
   };
 
@@ -1109,7 +1202,7 @@ function App() {
     } else if (nextPath === '/register') {
       setAuthMode('register');
       setView('auth');
-    } else if (['/dashboard', '/dashboard/my-courses', '/admin', '/admin/payments', '/admin/catalog', '/owner'].includes(nextPath) || nextPath.startsWith('/admin/courses/') || nextPath.startsWith('/courses/')) {
+    } else if (['/dashboard', '/dashboard/my-courses', '/admin', '/admin/payments', '/admin/payment-review', '/admin/follow-up', '/admin/catalog', '/owner'].includes(nextPath) || nextPath.startsWith('/admin/courses/') || nextPath.startsWith('/courses/')) {
       setView('dashboard');
     }
   };
@@ -1124,12 +1217,13 @@ function App() {
   const isStudentDashboardRoute = route === '/dashboard';
   const isMyCoursesRoute = route === '/dashboard/my-courses';
   const isAdminDashboardRoute = route === '/admin';
-  const isAdminPaymentsRoute = route === '/admin/payments';
+  const isAdminPaymentsRoute = route === '/admin/payments' || route === '/admin/payment-review';
+  const isAdminFollowUpRoute = route === '/admin/follow-up';
   const isAdminCatalogRoute = route === '/admin/catalog';
   const isOwnerRoute = route === '/owner';
   const isAdminLessonsRoute = routeSegments[0] === 'admin' && routeSegments[1] === 'courses' && routeSegments.length === 4 && routeSegments[3] === 'lessons';
   const isStudentPortalActive = isStudentDashboardRoute || isMyCoursesRoute || isCourseLearnRoute;
-  const isAdminPortalActive = isAdminDashboardRoute || isAdminPaymentsRoute || isAdminCatalogRoute || isOwnerRoute || isAdminLessonsRoute;
+  const isAdminPortalActive = isAdminDashboardRoute || isAdminPaymentsRoute || isAdminFollowUpRoute || isAdminCatalogRoute || isOwnerRoute || isAdminLessonsRoute;
   const isWorkspaceRoute = isStudentPortalActive || isAdminPortalActive;
 
   const selectedCourseSlug = isCourseDetailRoute || isCourseLearnRoute ? routeSegments[1] : '';
@@ -1646,7 +1740,7 @@ function App() {
         />
       )}
 
-      {['admin', 'super_admin'].includes(user?.role) && (isAdminDashboardRoute || isAdminPaymentsRoute || isAdminCatalogRoute || isOwnerRoute || isAdminLessonsRoute) && (
+      {['admin', 'super_admin'].includes(user?.role) && (isAdminDashboardRoute || isAdminPaymentsRoute || isAdminFollowUpRoute || isAdminCatalogRoute || isOwnerRoute || isAdminLessonsRoute) && (
         <div className="admin-workspace-shell">
           <aside className="admin-sidebar" aria-label="Admin sections">
             <div className="admin-sidebar-header">
@@ -1654,14 +1748,16 @@ function App() {
               <span className="admin-side-label">{user.role === 'super_admin' ? 'Owner' : 'Admin'}</span>
             </div>
             <button type="button" className={route === '/admin' ? 'active' : ''} onClick={() => navigate('/admin')}>Dashboard</button>
-            <button type="button" className={route === '/admin/payments' ? 'active' : ''} onClick={() => navigate('/admin/payments')}>Payment review</button>
+            <button type="button" className={isAdminPaymentsRoute ? 'active' : ''} onClick={() => navigate('/admin/payment-review')}>Payment review</button>
+            <button type="button" className={isAdminFollowUpRoute ? 'active' : ''} onClick={() => navigate('/admin/follow-up')}>Student follow-up</button>
             <button type="button" className={route === '/admin/catalog' ? 'active' : ''} onClick={() => navigate('/admin/catalog')}>Catalog controls</button>
             {user.role === 'super_admin' && <button type="button" className={route === '/owner' ? 'active' : ''} onClick={() => navigate('/owner')}>Owner controls</button>}
           </aside>
 
           <div className="admin-page-content">
             {isAdminDashboardRoute && <AdminDashboardPage user={user} dashboardMetrics={dashboardMetrics} adminCourses={adminCourses} adminEnrollments={adminEnrollments} navigate={navigate} logout={logout} />}
-            {isAdminPaymentsRoute && <AdminPaymentsPage adminEnrollments={adminEnrollments} formatMoney={formatMoney} approveEnrollment={approveEnrollment} />}
+            {isAdminPaymentsRoute && <AdminPaymentsPage adminEnrollments={adminEnrollments} transactions={adminTransactions} formatMoney={formatMoney} approveEnrollment={approveEnrollment} />}
+            {isAdminFollowUpRoute && <AdminFollowUpPage students={followUpStudents} updateStudentStatus={updateStudentStatus} prepareFollowUp={prepareFollowUp} />}
             {isAdminCatalogRoute && <AdminCatalogPage courseForm={courseForm} uploadingThumbnail={uploadingThumbnail} uploadingSyllabus={uploadingSyllabus} editingCourseId={editingCourseId} adminCourses={adminCourses} saveCourse={saveCourse} handleCourseChange={handleCourseChange} handleThumbnailUpload={handleThumbnailUpload} handleSyllabusUpload={handleSyllabusUpload} resetCourseForm={resetCourseForm} editCourse={editCourse} navigate={navigate} archiveCourse={archiveCourse} />}
             {isOwnerRoute && <OwnerControlsPage adminUsers={adminUsers} handleRoleChange={handleRoleChange} handleDeleteUser={handleDeleteUser} />}
             {isAdminLessonsRoute && <AdminLessonsPage selectedAdminCourse={selectedAdminCourse} modules={selectedAdminCourse?.modules || []} lessonForm={lessonForm} moduleForm={moduleForm} editingLessonId={editingLessonId} editingModuleId={editingModuleId} uploadingFile={uploadingFile} handleLessonChange={handleLessonChange} handleModuleChange={handleModuleChange} handleLessonFileUpload={handleLessonFileUpload} saveLesson={saveLesson} saveModule={saveModule} resetLessonForm={resetLessonForm} resetModuleForm={resetModuleForm} editModule={editModule} editLesson={editLesson} deleteLesson={deleteLesson} navigate={navigate} />}
